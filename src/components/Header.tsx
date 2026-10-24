@@ -1,0 +1,327 @@
+import React, { useState } from 'react';
+import {
+  Droplets,
+  AlertTriangle,
+  Bell,
+  Cpu,
+  User,
+  LogOut,
+  ChevronDown,
+  Info,
+  CheckCircle2,
+  X,
+  MapPin,
+} from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+import { VillageCommunity, Alert } from '../types/groundwater';
+
+interface HeaderProps {
+  currentVillage: VillageCommunity;
+  availableVillages: VillageCommunity[];
+  onSelectVillage: (village: VillageCommunity) => void;
+  alerts: Alert[];
+  onDismissAlert: (id: string) => void;
+  onOpenHardwareModal: () => void;
+}
+
+export const Header: React.FC<HeaderProps> = ({
+  currentVillage,
+  availableVillages,
+  onSelectVillage,
+  alerts,
+  onDismissAlert,
+  onOpenHardwareModal,
+}) => {
+  const { user, signInWithGoogle, signInAsDemoUser, signOutUser } = useAuth();
+  const [villageDropdownOpen, setVillageDropdownOpen] = useState(false);
+  const [alertsOpen, setAlertsOpen] = useState(false);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+
+  const activeAlerts = alerts.filter((a) => !a.isDismissed);
+  const hasCritical = activeAlerts.some((a) => a.severity === 'CRITICAL');
+
+  return (
+    <header className="sticky top-0 z-40 bg-[#F5F1E8] border-b border-[#D8D2C4] backdrop-blur-md">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="flex items-center justify-between h-18">
+          {/* Logo & Identity */}
+          <div className="flex items-center space-x-3">
+            <div className="w-10 h-10 rounded-lg bg-[#1F5A48] flex items-center justify-center text-[#F5F1E8] shadow-sm">
+              <Droplets className="w-6 h-6 text-[#A7D7D7]" />
+            </div>
+            <div>
+              <div className="flex items-center space-x-2">
+                <span className="font-bold text-xl tracking-tight text-[#1E2A28]">
+                  Bhujal<span className="text-[#1F5A48]">Setu</span>
+                </span>
+                <span className="hidden sm:inline-block px-2 py-0.5 text-[11px] font-semibold tracking-wide uppercase bg-[#D9C6A4]/60 text-[#1E2A28] rounded border border-[#C56B4C]/20">
+                  Prototype
+                </span>
+              </div>
+              <p className="text-xs text-[#1E2A28]/70 hidden md:block">
+                Community Groundwater Intelligence & Recharge
+              </p>
+            </div>
+          </div>
+
+          {/* Center: Community Selector & Demo Badge */}
+          <div className="hidden lg:flex items-center space-x-4">
+            {/* Village Selector */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setVillageDropdownOpen(!villageDropdownOpen)}
+                className="flex items-center space-x-2 px-3 py-1.5 rounded-md bg-[#EAE5DB] hover:bg-[#E2DDD2] text-[#1E2A28] text-sm font-medium border border-[#D8D2C4] transition-colors"
+              >
+                <MapPin className="w-3.5 h-3.5 text-[#3B7C8A]" />
+                <span>{currentVillage.name}</span>
+                <ChevronDown className="w-3.5 h-3.5 text-[#1E2A28]/60" />
+              </button>
+
+              {villageDropdownOpen && (
+                <div className="absolute left-0 mt-2 w-72 bg-[#F5F1E8] border border-[#D8D2C4] rounded-lg shadow-lg p-2 z-50">
+                  <div className="text-[11px] font-semibold uppercase tracking-wider text-[#1E2A28]/60 px-2 py-1">
+                    Select Community Cluster
+                  </div>
+                  {availableVillages.map((v) => (
+                    <button
+                      key={v.id}
+                      type="button"
+                      onClick={() => {
+                        onSelectVillage(v);
+                        setVillageDropdownOpen(false);
+                      }}
+                      className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors flex flex-col ${
+                        v.id === currentVillage.id
+                          ? 'bg-[#1F5A48] text-[#F5F1E8]'
+                          : 'hover:bg-[#EAE5DB] text-[#1E2A28]'
+                      }`}
+                    >
+                      <span className="font-medium">{v.name}</span>
+                      <span
+                        className={`text-xs ${
+                          v.id === currentVillage.id
+                            ? 'text-[#A7D7D7]'
+                            : 'text-[#1E2A28]/60'
+                        }`}
+                      >
+                        {v.district}, {v.state} • {v.aquiferType.split(' ')[0]}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Prominent Demo Data Badge */}
+            <div className="inline-flex items-center space-x-1.5 px-3 py-1 bg-[#C56B4C]/15 border border-[#C56B4C]/30 text-[#B74A3B] text-xs font-semibold rounded">
+              <Info className="w-3.5 h-3.5 flex-shrink-0" />
+              <span>DEMO DATA — NOT LIVE FIELD DATA</span>
+            </div>
+          </div>
+
+          {/* Right Action Icons & Auth */}
+          <div className="flex items-center space-x-2 sm:space-x-3">
+            {/* ESP32 Hardware Blueprint button */}
+            <button
+              type="button"
+              onClick={onOpenHardwareModal}
+              title="View Planned ESP32 IoT Sensor Specs"
+              className="hidden sm:flex items-center space-x-1.5 px-2.5 py-1.5 rounded-md bg-[#EAE5DB] hover:bg-[#E2DDD2] text-[#1E2A28] text-xs font-medium border border-[#D8D2C4] transition-colors"
+            >
+              <Cpu className="w-3.5 h-3.5 text-[#3B7C8A]" />
+              <span>ESP32 Blueprint</span>
+            </button>
+
+            {/* Notification / Alert Drawer Toggle */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setAlertsOpen(!alertsOpen)}
+                className={`relative p-2 rounded-md border transition-colors ${
+                  hasCritical
+                    ? 'bg-[#B74A3B]/10 border-[#B74A3B]/40 text-[#B74A3B]'
+                    : 'bg-[#EAE5DB] border-[#D8D2C4] text-[#1E2A28] hover:bg-[#E2DDD2]'
+                }`}
+                aria-label="View system alerts"
+              >
+                <Bell className="w-4 h-4" />
+                {activeAlerts.length > 0 && (
+                  <span
+                    className={`absolute -top-1 -right-1 w-4 h-4 text-[10px] font-bold rounded-full flex items-center justify-center text-white ${
+                      hasCritical ? 'bg-[#B74A3B]' : 'bg-[#C56B4C]'
+                    }`}
+                  >
+                    {activeAlerts.length}
+                  </span>
+                )}
+              </button>
+
+              {alertsOpen && (
+                <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-[#F5F1E8] border border-[#D8D2C4] rounded-lg shadow-xl p-3 z-50">
+                  <div className="flex items-center justify-between pb-2 border-b border-[#D8D2C4]">
+                    <div className="flex items-center space-x-1.5">
+                      <AlertTriangle className="w-4 h-4 text-[#C56B4C]" />
+                      <span className="font-semibold text-sm text-[#1E2A28]">
+                        Aquifer Alert Feed ({activeAlerts.length})
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setAlertsOpen(false)}
+                      className="text-[#1E2A28]/50 hover:text-[#1E2A28]"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  <div className="mt-2 space-y-2 max-h-80 overflow-y-auto pr-1">
+                    {activeAlerts.length === 0 ? (
+                      <div className="py-6 text-center text-sm text-[#1E2A28]/60">
+                        <CheckCircle2 className="w-8 h-8 text-[#1F5A48] mx-auto mb-2" />
+                        No active alerts. Aquifer metrics within stable bounds.
+                      </div>
+                    ) : (
+                      activeAlerts.map((alert) => (
+                        <div
+                          key={alert.id}
+                          className={`p-2.5 rounded-md text-xs border ${
+                            alert.severity === 'CRITICAL'
+                              ? 'bg-[#B74A3B]/10 border-[#B74A3B]/30 text-[#1E2A28]'
+                              : alert.severity === 'WATCH'
+                              ? 'bg-[#C56B4C]/10 border-[#C56B4C]/30 text-[#1E2A28]'
+                              : 'bg-[#1F5A48]/10 border-[#1F5A48]/20 text-[#1E2A28]'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between">
+                            <span
+                              className={`font-semibold uppercase tracking-wider text-[10px] px-1.5 py-0.5 rounded ${
+                                alert.severity === 'CRITICAL'
+                                  ? 'bg-[#B74A3B] text-white'
+                                  : alert.severity === 'WATCH'
+                                  ? 'bg-[#C56B4C] text-white'
+                                  : 'bg-[#1F5A48] text-white'
+                              }`}
+                            >
+                              {alert.severity}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => onDismissAlert(alert.id)}
+                              className="text-[#1E2A28]/40 hover:text-[#1E2A28] ml-2"
+                              title="Dismiss alert"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                          <div className="font-medium mt-1 text-[#1E2A28] text-xs">
+                            {alert.title}
+                          </div>
+                          <p className="mt-1 text-[#1E2A28]/80 leading-relaxed">
+                            {alert.message}
+                          </p>
+                          <div className="mt-2 pt-1 border-t border-black/5 flex justify-between text-[10px] text-[#1E2A28]/60">
+                            <span>{alert.triggerMetric}: {alert.actualValue}</span>
+                            <span>{alert.timestamp}</span>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* User Profile / Auth Area */}
+            <div className="relative">
+              {user ? (
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => setUserMenuOpen(!userMenuOpen)}
+                    className="flex items-center space-x-2 p-1.5 rounded-md hover:bg-[#EAE5DB] border border-transparent hover:border-[#D8D2C4] transition-colors"
+                  >
+                    {user.photoURL ? (
+                      <img
+                        src={user.photoURL}
+                        alt="Profile"
+                        className="w-7 h-7 rounded-full object-cover border border-[#1F5A48]"
+                      />
+                    ) : (
+                      <div className="w-7 h-7 rounded-full bg-[#1F5A48] text-[#F5F1E8] flex items-center justify-center text-xs font-semibold">
+                        {user.displayName?.[0] || 'U'}
+                      </div>
+                    )}
+                    <span className="hidden sm:inline text-xs font-medium text-[#1E2A28] max-w-[120px] truncate">
+                      {user.displayName}
+                    </span>
+                    <ChevronDown className="w-3 h-3 text-[#1E2A28]/60" />
+                  </button>
+
+                  {userMenuOpen && (
+                    <div className="absolute right-0 mt-2 w-56 bg-[#F5F1E8] border border-[#D8D2C4] rounded-lg shadow-lg p-2 z-50">
+                      <div className="px-3 py-2 border-b border-[#D8D2C4]">
+                        <div className="text-xs font-semibold text-[#1E2A28]">
+                          {user.displayName}
+                        </div>
+                        <div className="text-[11px] text-[#1E2A28]/60 truncate">
+                          {user.email || 'Local Community Member'}
+                        </div>
+                        {user.isDemo && (
+                          <span className="inline-block mt-1 text-[10px] font-semibold text-[#3B7C8A] bg-[#3B7C8A]/10 px-1.5 py-0.5 rounded">
+                            Demo Profile
+                          </span>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          signOutUser();
+                          setUserMenuOpen(false);
+                        }}
+                        className="w-full flex items-center space-x-2 px-3 py-2 text-xs text-[#B74A3B] hover:bg-[#EAE5DB] rounded-md transition-colors mt-1"
+                      >
+                        <LogOut className="w-3.5 h-3.5" />
+                        <span>Sign Out</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="flex items-center space-x-1.5">
+                  <button
+                    type="button"
+                    onClick={signInWithGoogle}
+                    className="flex items-center space-x-1 px-3 py-1.5 rounded-md bg-[#1F5A48] hover:bg-[#184638] text-[#F5F1E8] text-xs font-medium shadow-sm transition-colors"
+                  >
+                    <User className="w-3.5 h-3.5" />
+                    <span>Google Sign In</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={signInAsDemoUser}
+                    title="Sign in with instant demo profile"
+                    className="hidden sm:inline-flex px-2 py-1.5 rounded-md bg-[#EAE5DB] hover:bg-[#E2DDD2] text-[#1E2A28] text-xs font-medium border border-[#D8D2C4] transition-colors"
+                  >
+                    Demo
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Mobile Banner: Demo Notification */}
+        <div className="lg:hidden pb-2 pt-1 flex items-center justify-between text-[11px]">
+          <span className="font-medium text-[#1E2A28] flex items-center gap-1">
+            <MapPin className="w-3 h-3 text-[#3B7C8A]" />
+            {currentVillage.name}
+          </span>
+          <span className="px-2 py-0.5 bg-[#C56B4C]/15 border border-[#C56B4C]/30 text-[#B74A3B] font-semibold rounded">
+            DEMO DATA — NOT LIVE FIELD SENSORS
+          </span>
+        </div>
+      </div>
+    </header>
+  );
+};

@@ -1,0 +1,88 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User profile with community association and optional roles",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "email": { "type": "string", "format": "email", "maxLength": 256 },
+        "displayName": { "type": "string", "maxLength": 100 },
+        "photoURL": { "type": "string", "maxLength": 512 },
+        "communityId": { "type": "string", "maxLength": 64 },
+        "role": { "type": "string", "enum": ["resident", "ward_representative", "water_volunteer", "admin"] },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "email", "displayName"]
+    },
+    "CommunityAction": {
+      "title": "CommunityAction",
+      "description": "Groundwater recharge and conservation action logged by community members",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "userName": { "type": "string", "maxLength": 100 },
+        "userEmail": { "type": "string", "format": "email", "maxLength": 256 },
+        "actionType": { "type": "string", "enum": ["recharge_pit_clearing", "borewell_scheduling", "rainwater_harvest_check", "leak_repair", "greywater_recycling", "recharge_well_monitoring"] },
+        "title": { "type": "string", "maxLength": 150 },
+        "description": { "type": "string", "maxLength": 500 },
+        "ward": { "type": "string", "maxLength": 100 },
+        "impactLiters": { "type": "number" },
+        "status": { "type": "string", "enum": ["proposed", "in_progress", "completed"] },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "userId", "userName", "actionType", "title", "ward", "status"]
+    },
+    "WaterPledge": {
+      "title": "WaterPledge",
+      "description": "Voluntary water conservation pledge by household",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "userName": { "type": "string", "maxLength": 100 },
+        "pledgeType": { "type": "string", "enum": ["irrigation_timing", "aerator_install", "rain_storage", "recharge_well_adoption"] },
+        "targetLitersPerDay": { "type": "number" },
+        "communityId": { "type": "string", "maxLength": 64 },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "userId", "userName", "pledgeType", "targetLitersPerDay"]
+    },
+    "FieldObservation": {
+      "title": "FieldObservation",
+      "description": "Field observation or problem report logged by a community member",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "userName": { "type": "string", "maxLength": 100 },
+        "observationType": { "type": "string", "enum": ["recharge_blockage", "unusual_extraction", "water_overflow", "sensor_check_needed"] },
+        "location": { "type": "string", "maxLength": 150 },
+        "severity": { "type": "string", "enum": ["low", "medium", "high"] },
+        "notes": { "type": "string", "maxLength": 500 },
+        "status": { "type": "string", "enum": ["open", "investigating", "resolved"] },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "userId", "userName", "observationType", "location", "severity", "status"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "User profile collection partitioned by authenticated user ID"
+    },
+    "/community_actions/{actionId}": {
+      "schema": "CommunityAction",
+      "description": "Community recharge and conservation initiatives"
+    },
+    "/water_pledges/{pledgeId}": {
+      "schema": "WaterPledge",
+      "description": "Household conservation pledges"
+    },
+    "/field_observations/{observationId}": {
+      "schema": "FieldObservation",
+      "description": "Ground alerts and field notices submitted by community members"
+    }
+  }
+}

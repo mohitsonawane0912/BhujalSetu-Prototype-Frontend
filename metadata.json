@@ -1,0 +1,6 @@
+{
+  "name": "BhujalSetu — Community Groundwater Intelligence",
+  "description": "Turning Groundwater Data into Community Action. Community groundwater monitoring, water balance calculations, recharge planning, and rule-based advisory.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
