@@ -24,6 +24,16 @@ service cloud.firestore {
       );
     }
 
+    // This document is provisioned by a trusted administrator, not by a user profile edit.
+    function hasActiveCommunityMembership(communityId) {
+      let membershipPath = /databases/$(database)/documents/community_memberships/$(request.auth.uid + "_" + communityId);
+      return isSignedIn() && communityId is string && communityId.size() <= 64 &&
+        exists(membershipPath) &&
+        get(membershipPath).data.userId == request.auth.uid &&
+        get(membershipPath).data.villageId == communityId &&
+        get(membershipPath).data.status == 'active';
+    }
+
     function incoming() {
       return request.resource.data;
     }
@@ -51,9 +61,10 @@ service cloud.firestore {
 
     // Validation for CommunityAction
     function isValidCommunityAction(data) {
-      return data.keys().hasAll(['id', 'userId', 'userName', 'actionType', 'title', 'ward', 'status']) &&
-        data.keys().hasOnly(['id', 'userId', 'userName', 'userEmail', 'actionType', 'title', 'description', 'ward', 'impactLiters', 'status', 'createdAt']) &&
+      return data.keys().hasAll(['id', 'communityId', 'userId', 'userName', 'actionType', 'title', 'ward', 'status']) &&
+        data.keys().hasOnly(['id', 'communityId', 'userId', 'userName', 'userEmail', 'actionType', 'title', 'description', 'ward', 'impactLiters', 'status', 'createdAt']) &&
         data.id is string && data.id.size() <= 128 &&
+        data.communityId is string && data.communityId.size() <= 64 &&
         data.userId is string && data.userId.size() <= 128 && data.userId == request.auth.uid &&
         data.userName is string && data.userName.size() <= 100 &&
         data.actionType in ['recharge_pit_clearing', 'borewell_scheduling', 'rainwater_harvest_check', 'leak_repair', 'greywater_recycling', 'recharge_well_monitoring'] &&
@@ -68,14 +79,14 @@ service cloud.firestore {
 
     // Validation for WaterPledge
     function isValidWaterPledge(data) {
-      return data.keys().hasAll(['id', 'userId', 'userName', 'pledgeType', 'targetLitersPerDay']) &&
+      return data.keys().hasAll(['id', 'communityId', 'userId', 'userName', 'pledgeType', 'targetLitersPerDay']) &&
         data.keys().hasOnly(['id', 'userId', 'userName', 'pledgeType', 'targetLitersPerDay', 'communityId', 'createdAt']) &&
         data.id is string && data.id.size() <= 128 &&
         data.userId is string && data.userId.size() <= 128 && data.userId == request.auth.uid &&
         data.userName is string && data.userName.size() <= 100 &&
         data.pledgeType in ['irrigation_timing', 'aerator_install', 'rain_storage', 'recharge_well_adoption'] &&
         data.targetLitersPerDay is number &&
-        (!('communityId' in data) || (data.communityId is string && data.communityId.size() <= 64)) &&
+        data.communityId is string && data.communityId.size() <= 64 &&
         (!('createdAt' in data) || (data.createdAt is string && data.createdAt.size() <= 64));
     }
 
@@ -107,9 +118,10 @@ service cloud.firestore {
 
     // Community actions
     match /community_actions/{actionId} {
-      allow get, list: if isSignedIn();
-      allow create: if isSignedIn() && isValidId(actionId) && isValidCommunityAction(incoming()) && incoming().id == actionId;
-      allow update: if isSignedIn() && isValidCommunityAction(incoming()) &&
+      allow get, list: if hasActiveCommunityMembership(resource.data.communityId);
+      allow create: if isSignedIn() && hasActiveCommunityMembership(incoming().communityId) && isValidId(actionId) && isValidCommunityAction(incoming()) && incoming().id == actionId && incoming().userId == request.auth.uid;
+      allow update: if hasActiveCommunityMembership(existing().communityId) &&
+        incoming().communityId == existing().communityId && isValidCommunityAction(incoming()) &&
         incoming().id == existing().id &&
         incoming().userId == existing().userId &&
         (
@@ -122,9 +134,10 @@ service cloud.firestore {
 
     // Water pledges
     match /water_pledges/{pledgeId} {
-      allow get, list: if isSignedIn();
-      allow create: if isSignedIn() && isValidId(pledgeId) && isValidWaterPledge(incoming()) && incoming().id == pledgeId;
-      allow update: if isSignedIn() && isValidWaterPledge(incoming()) &&
+      allow get, list: if hasActiveCommunityMembership(resource.data.communityId);
+      allow create: if isSignedIn() && hasActiveCommunityMembership(incoming().communityId) && isValidId(pledgeId) && isValidWaterPledge(incoming()) && incoming().id == pledgeId && incoming().userId == request.auth.uid;
+      allow update: if hasActiveCommunityMembership(existing().communityId) &&
+        incoming().communityId == existing().communityId && isValidWaterPledge(incoming()) &&
         incoming().id == existing().id &&
         incoming().userId == existing().userId &&
         existing().userId == request.auth.uid;
@@ -144,6 +157,38 @@ service cloud.firestore {
           (incoming().diff(existing()).affectedKeys().hasOnly(['status', 'notes']))
         );
       allow delete: if isAdmin() || (isSignedIn() && existing().userId == request.auth.uid);
+    }
+
+    // Community memberships: Provisioned by trusted administrator only; never user-editable
+    match /community_memberships/{membershipId} {
+      allow get: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow list: if isAdmin();
+      allow write: if false; // Only server admin SDK or trusted console admin can provision
+    }
+
+    // Prototype node telemetry: Read scoped to active community members; written only via backend admin SDK
+    match /prototype_node_telemetry/{telemetryId} {
+      allow get, list: if hasActiveCommunityMembership(resource.data.villageId);
+      allow write: if false; // Ingested via backend POST /api/v1/telemetry
+    }
+
+    // Legacy telemetry (deprecated): Scoped to confirmed active community membership
+    match /prototype_telemetry/{telemetryId} {
+      allow get, list: if hasActiveCommunityMembership(resource.data.villageId);
+      allow write: if false;
+    }
+
+    // Community aggregate GEM balances: Read scoped to confirmed community members; write only via backend admin SDK
+    match /community_gem_balances/{villageId} {
+      allow get: if hasActiveCommunityMembership(villageId);
+      allow list: if false;
+      allow write: if false; // Clients cannot award themselves GEMs
+    }
+
+    // GEM accrual audit ledger: Read scoped to confirmed community members; write only via backend admin SDK
+    match /gem_accruals/{accrualId} {
+      allow get, list: if hasActiveCommunityMembership(resource.data.villageId);
+      allow write: if false; // Clients cannot create or alter accrual records
     }
   }
 }

@@ -21,8 +21,8 @@ test('calculateWaterBalance accurately sums inputs, outputs, and net balance', (
 
   const balance = calculateWaterBalance(inputs, outputs, 'daily', '2026-10-24');
 
-  assert.equal(balance.inputs.totalInputsLiters, 34000);
-  assert.equal(balance.outputs.totalOutputsLiters, 48000);
+  assert.equal(balance.inputs?.totalInputsLiters, 34000);
+  assert.equal(balance.outputs?.totalOutputsLiters, 48000);
   assert.equal(balance.netBalanceLiters, -14000); // Deficit of 14,000 L
   assert.equal(balance.netBalanceM3, -14.0);
 });

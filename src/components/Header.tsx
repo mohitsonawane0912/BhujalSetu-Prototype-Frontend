@@ -11,9 +11,11 @@ import {
   CheckCircle2,
   X,
   MapPin,
+  Radio,
+  WifiOff,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { VillageCommunity, Alert } from '../types/groundwater';
+import { VillageCommunity, Alert, TelemetryConnectionStatus } from '../types/groundwater';
 
 interface HeaderProps {
   currentVillage: VillageCommunity;
@@ -22,6 +24,7 @@ interface HeaderProps {
   alerts: Alert[];
   onDismissAlert: (id: string) => void;
   onOpenHardwareModal: () => void;
+  telemetryStatus?: TelemetryConnectionStatus;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -31,8 +34,9 @@ export const Header: React.FC<HeaderProps> = ({
   alerts,
   onDismissAlert,
   onOpenHardwareModal,
+  telemetryStatus = 'loading',
 }) => {
-  const { user, signInWithGoogle, signInAsDemoUser, signOutUser } = useAuth();
+  const { user, error, clearError, signInWithGoogle, signInAsDemoUser, signOutUser } = useAuth();
   const [villageDropdownOpen, setVillageDropdownOpen] = useState(false);
   const [alertsOpen, setAlertsOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -81,7 +85,7 @@ export const Header: React.FC<HeaderProps> = ({
               {villageDropdownOpen && (
                 <div className="absolute left-0 mt-2 w-72 bg-[#F5F1E8] border border-[#D8D2C4] rounded-lg shadow-lg p-2 z-50">
                   <div className="text-[11px] font-semibold uppercase tracking-wider text-[#1E2A28]/60 px-2 py-1">
-                    Select Community Cluster
+                    Community Aquifer Profiles · {currentVillage.name}
                   </div>
                   {availableVillages.map((v) => (
                     <button
@@ -113,11 +117,43 @@ export const Header: React.FC<HeaderProps> = ({
               )}
             </div>
 
-            {/* Prominent Demo Data Badge */}
-            <div className="inline-flex items-center space-x-1.5 px-3 py-1 bg-[#C56B4C]/15 border border-[#C56B4C]/30 text-[#B74A3B] text-xs font-semibold rounded">
-              <Info className="w-3.5 h-3.5 flex-shrink-0" />
-              <span>DEMO DATA — NOT LIVE FIELD DATA</span>
-            </div>
+            {/* Dynamic Hardware Telemetry Status Badge */}
+            {telemetryStatus === 'ready' && (
+              <div className="inline-flex items-center space-x-1.5 px-3 py-1 bg-[#1F5A48]/15 border border-[#1F5A48]/30 text-[#1F5A48] text-xs font-semibold rounded">
+                <Radio className="w-3.5 h-3.5 flex-shrink-0 text-[#1F5A48]" />
+                <span>Tabletop Prototype · Live Telemetry</span>
+              </div>
+            )}
+            {telemetryStatus === 'loading' && (
+              <div className="inline-flex items-center space-x-1.5 px-3 py-1 bg-[#EAE5DB] border border-[#D8D2C4] text-[#1E2A28]/70 text-xs font-semibold rounded animate-pulse">
+                <Radio className="w-3.5 h-3.5 flex-shrink-0 text-[#1F5A48] animate-spin" />
+                <span>Checking Telemetry...</span>
+              </div>
+            )}
+            {telemetryStatus === 'no-data' && (
+              <div className="inline-flex items-center space-x-1.5 px-3 py-1 bg-[#EAE5DB] border border-[#D8D2C4] text-[#1E2A28]/70 text-xs font-semibold rounded">
+                <Info className="w-3.5 h-3.5 flex-shrink-0 text-[#3B7C8A]" />
+                <span>Waiting for Node Telemetry</span>
+              </div>
+            )}
+            {telemetryStatus === 'signed-out' && (
+              <div className="inline-flex items-center space-x-1.5 px-3 py-1 bg-[#D9C6A4]/30 border border-[#D9C6A4] text-[#1E2A28]/70 text-xs font-semibold rounded">
+                <WifiOff className="w-3.5 h-3.5 flex-shrink-0 text-[#C56B4C]" />
+                <span>Sign In for Live Telemetry</span>
+              </div>
+            )}
+            {telemetryStatus === 'unauthorized' && (
+              <div className="inline-flex items-center space-x-1.5 px-3 py-1 bg-[#B74A3B]/10 border border-[#B74A3B]/30 text-[#B74A3B] text-xs font-semibold rounded">
+                <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 text-[#B74A3B]" />
+                <span>Membership Required</span>
+              </div>
+            )}
+            {telemetryStatus === 'backend-error' && (
+              <div className="inline-flex items-center space-x-1.5 px-3 py-1 bg-[#C56B4C]/15 border border-[#C56B4C]/30 text-[#B74A3B] text-xs font-semibold rounded">
+                <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 text-[#C56B4C]" />
+                <span>Telemetry Storage Offline</span>
+              </div>
+            )}
           </div>
 
           {/* Right Action Icons & Auth */}
@@ -179,7 +215,7 @@ export const Header: React.FC<HeaderProps> = ({
                     {activeAlerts.length === 0 ? (
                       <div className="py-6 text-center text-sm text-[#1E2A28]/60">
                         <CheckCircle2 className="w-8 h-8 text-[#1F5A48] mx-auto mb-2" />
-                        No active alerts. Aquifer metrics within stable bounds.
+                        No active prototype sensor alerts. Tabletop hardware operating within normal bench bounds.
                       </div>
                     ) : (
                       activeAlerts.map((alert) => (
@@ -301,7 +337,7 @@ export const Header: React.FC<HeaderProps> = ({
                     type="button"
                     onClick={signInAsDemoUser}
                     title="Sign in with instant demo profile"
-                    className="hidden sm:inline-flex px-2 py-1.5 rounded-md bg-[#EAE5DB] hover:bg-[#E2DDD2] text-[#1E2A28] text-xs font-medium border border-[#D8D2C4] transition-colors"
+                    className="inline-flex px-2 py-1.5 rounded-md bg-[#EAE5DB] hover:bg-[#E2DDD2] text-[#1E2A28] text-xs font-medium border border-[#D8D2C4] transition-colors"
                   >
                     Demo
                   </button>
@@ -311,16 +347,56 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         </div>
 
-        {/* Mobile Banner: Demo Notification */}
+        {/* Mobile Banner: Telemetry Status */}
         <div className="lg:hidden pb-2 pt-1 flex items-center justify-between text-[11px]">
           <span className="font-medium text-[#1E2A28] flex items-center gap-1">
             <MapPin className="w-3 h-3 text-[#3B7C8A]" />
             {currentVillage.name}
           </span>
-          <span className="px-2 py-0.5 bg-[#C56B4C]/15 border border-[#C56B4C]/30 text-[#B74A3B] font-semibold rounded">
-            DEMO DATA — NOT LIVE FIELD SENSORS
+          <span className={`px-2 py-0.5 font-semibold rounded text-[10px] uppercase ${
+            telemetryStatus === 'ready'
+              ? 'bg-[#1F5A48]/15 border border-[#1F5A48]/30 text-[#1F5A48]'
+              : telemetryStatus === 'loading'
+              ? 'bg-[#EAE5DB] border border-[#D8D2C4] text-[#1E2A28]/70'
+              : 'bg-[#D9C6A4]/30 border border-[#D9C6A4] text-[#1E2A28]/70'
+          }`}>
+            {telemetryStatus === 'ready'
+              ? 'Prototype: Live Telemetry'
+              : telemetryStatus === 'loading'
+              ? 'Connecting...'
+              : 'Prototype Telemetry'}
           </span>
         </div>
+
+        {/* Auth Error Notification Bar */}
+        {error && (
+          <div className="mt-2 mb-2 p-2.5 rounded-lg bg-[#B74A3B]/10 border border-[#B74A3B]/30 text-xs text-[#1E2A28] flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div className="flex items-center space-x-2">
+              <AlertTriangle className="w-4 h-4 text-[#B74A3B] flex-shrink-0" />
+              <span>{error}</span>
+            </div>
+            <div className="flex items-center space-x-2 flex-shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  signInAsDemoUser();
+                  clearError();
+                }}
+                className="px-2.5 py-1 rounded bg-[#1F5A48] hover:bg-[#184638] text-white font-medium text-xs transition-colors shadow-xs"
+              >
+                Sign In as Demo
+              </button>
+              <button
+                type="button"
+                onClick={clearError}
+                className="p-1 text-[#1E2A28]/60 hover:text-[#1E2A28]"
+                title="Dismiss"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </header>
   );

@@ -23,6 +23,7 @@ interface AuthContextType {
   signInWithGoogle: () => Promise<void>;
   signOutUser: () => Promise<void>;
   signInAsDemoUser: () => void;
+  clearError: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -82,9 +83,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
       localStorage.removeItem('bhujalsetu_demo_user');
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Google sign-in was interrupted or closed.';
+      let msg = 'Google sign-in was interrupted or closed.';
+      if (err instanceof Error) {
+        if (err.message.includes('auth/unauthorized-domain')) {
+          msg = "Localhost domain is not added to Firebase OAuth authorized domains. Click 'Sign In as Demo' below to enter the dashboard immediately.";
+        } else if (err.message.includes('auth/popup-blocked')) {
+          msg = "The sign-in popup was blocked by your browser. Please allow popups or use Demo profile.";
+        } else if (err.message.includes('auth/popup-closed-by-user')) {
+          msg = "Google sign-in window was closed before completing.";
+        } else {
+          msg = err.message;
+        }
+      }
       setError(msg);
-      console.warn('Google sign-in attempt:', msg);
+      console.warn('Google sign-in attempt:', err);
     }
   };
 
@@ -98,6 +110,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
     setUser(demoUser);
     localStorage.setItem('bhujalsetu_demo_user', JSON.stringify(demoUser));
+    setError(null);
+  };
+
+  const clearError = () => {
     setError(null);
   };
 
@@ -121,6 +137,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         signInWithGoogle,
         signOutUser,
         signInAsDemoUser,
+        clearError,
       }}
     >
       {children}

@@ -17,6 +17,7 @@ import {
   query,
   orderBy,
   limit,
+  where,
 } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 
@@ -99,5 +100,6 @@ export {
   query,
   orderBy,
   limit,
+  where,
   type FirebaseUser,
 };

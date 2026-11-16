@@ -20,7 +20,7 @@ import { useAuth } from '../context/AuthContext';
 interface ActionsViewProps {
   recommendations: ActionRecommendation[];
   onUpdateStatus: (id: string, newStatus: ActionStatus) => void;
-  onAddCommunityAction: (action: Omit<CommunityActionItem, 'id' | 'createdAt'>) => Promise<void>;
+  onAddCommunityAction: (action: Omit<CommunityActionItem, 'id' | 'createdAt' | 'communityId'>) => Promise<void>;
 }
 
 export const ActionsView: React.FC<ActionsViewProps> = ({
@@ -111,37 +111,39 @@ export const ActionsView: React.FC<ActionsViewProps> = ({
             </div>
             <div>
               <span className="text-[11px] font-bold tracking-wider text-[#A7D7D7] uppercase">
-                Aquifer Advisory Engine
+                Community Stewardship Playbook
               </span>
               <h2 className="text-lg font-bold text-[#F5F1E8]">
-                Rule & Trend-Based Advisory
+                Standard Conservation Guidelines
               </h2>
             </div>
           </div>
 
           <div className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded bg-[#2B3B38] text-[10px] text-[#D9C6A4] font-medium border border-[#3E524D]">
-            <span>Deterministic Rule Evaluation • Not Blackbox ML</span>
+            <span>Operational Best Practices • Tabletop Sensors Measure Bench Flow Only</span>
           </div>
         </div>
 
         {/* Primary Advisory Quote */}
         <div className="mt-4 p-4 rounded-xl bg-[#2B3B38]/80 border border-[#3E524D]">
           <p className="text-base sm:text-lg font-medium text-[#F5F1E8] leading-relaxed italic">
-            “Groundwater level has declined faster than the recent baseline while extraction remains elevated. Consider reducing non-essential extraction and prioritizing recharge after the next rainfall event.”
+            “Maintain regular rotation schedules for agricultural tubewells and ensure silt filtration beds in community recharge pits are cleared before peak seasonal runoff.”
           </p>
 
           <div className="mt-4 pt-3 border-t border-[#3E524D] flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center space-x-2 text-xs text-[#A7D7D7]">
-              <span>Key Observation: 18.4m depth (-0.6m shift) & extraction ratio 1.42×</span>
+              <span>Guidance: Standard participatory recommendations for village water committees.</span>
             </div>
-            <button
-              type="button"
-              onClick={() => setSelectedRecForDetail(recommendations[0])}
-              className="px-3 py-1.5 rounded bg-[#1F5A48] hover:bg-[#256d57] text-[#F5F1E8] text-xs font-semibold flex items-center space-x-1.5 transition-colors"
-            >
-              <HelpCircle className="w-3.5 h-3.5 text-[#A7D7D7]" />
-              <span>Why am I seeing this? (Inspect Sensors)</span>
-            </button>
+            {recommendations.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setSelectedRecForDetail(recommendations[0])}
+                className="px-3 py-1.5 rounded bg-[#1F5A48] hover:bg-[#256d57] text-[#F5F1E8] text-xs font-semibold flex items-center space-x-1.5 transition-colors"
+              >
+                <HelpCircle className="w-3.5 h-3.5 text-[#A7D7D7]" />
+                <span>Guidance Context</span>
+              </button>
+            )}
           </div>
         </div>
       </section>

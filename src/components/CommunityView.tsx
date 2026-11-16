@@ -19,6 +19,7 @@ import {
   VillageCommunity,
   CommunityActionItem,
   WaterPledgeItem,
+  CommunityGemSummary,
 } from '../types/groundwater';
 import { useAuth } from '../context/AuthContext';
 
@@ -27,6 +28,7 @@ interface CommunityViewProps {
   actions: CommunityActionItem[];
   pledges: WaterPledgeItem[];
   onAddPledge: (pledge: Omit<WaterPledgeItem, 'id' | 'createdAt'>) => Promise<void>;
+  gemSummary?: CommunityGemSummary | null;
 }
 
 export const CommunityView: React.FC<CommunityViewProps> = ({
@@ -90,6 +92,19 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
           <HeartHandshake className="w-4 h-4 text-[#A7D7D7]" />
           <span>Make Conservation Pledge</span>
         </button>
+      </div>
+
+      {/* Community Governance Context Notice */}
+      <div className="p-3.5 rounded-lg bg-[#EAE5DB] border border-[#D8D2C4] flex items-center justify-between text-xs text-[#1E2A28]">
+        <div className="flex items-center space-x-2">
+          <Shield className="w-4 h-4 text-[#1F5A48] flex-shrink-0" />
+          <span>
+            <strong className="text-[#1E2A28]">Community Governance Layer:</strong> Displays verified resident-submitted maintenance logs and voluntary conservation pledges for <strong>{village.name}</strong>. Stored in Firestore and managed separately from the tabletop sensor prototype.
+          </span>
+        </div>
+        <span className="text-[10px] font-semibold uppercase px-2 py-0.5 bg-[#1F5A48]/10 text-[#1F5A48] rounded hidden sm:inline-block">
+          Resident Submitted
+        </span>
       </div>
 
       {/* Community Water Status Overview Cards */}
@@ -204,28 +219,38 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
           </div>
 
           <div className="mt-4 space-y-3">
-            {actions.map((act) => (
-              <div
-                key={act.id}
-                className="p-3.5 rounded-lg bg-[#F5F1E8] border border-[#D8D2C4] space-y-1.5"
-              >
-                <div className="flex items-center justify-between text-xs">
-                  <span className="font-bold text-[#1E2A28]">{act.title}</span>
-                  <span className="text-[10px] uppercase font-bold text-[#1F5A48] bg-[#1F5A48]/10 px-2 py-0.5 rounded">
-                    {act.status}
-                  </span>
-                </div>
-                <p className="text-xs text-[#1E2A28]/80 leading-relaxed">
-                  {act.description}
+            {actions.length === 0 ? (
+              <div className="py-8 text-center text-xs text-[#1E2A28]/60 p-4 rounded-lg bg-[#F5F1E8] border border-[#D8D2C4]">
+                <CheckCircle2 className="w-8 h-8 text-[#1F5A48]/30 mx-auto mb-2" />
+                <p className="font-semibold text-[#1E2A28]/80">No community actions logged for {village.name} yet.</p>
+                <p className="text-[11px] text-[#1E2A28]/55 mt-1">
+                  Community members can record de-silting, catchment repair, or pumping roster adjustments via the Actions tab.
                 </p>
-                <div className="pt-1 flex flex-wrap items-center justify-between text-[11px] text-[#1E2A28]/60 gap-1">
-                  <span>Logged by: <strong className="text-[#1E2A28]">{act.userName}</strong> ({act.ward})</span>
-                  <span className="text-[#1F5A48] font-bold">
-                    +{(act.impactLiters).toLocaleString()} L Impact
-                  </span>
-                </div>
               </div>
-            ))}
+            ) : (
+              actions.map((act) => (
+                <div
+                  key={act.id}
+                  className="p-3.5 rounded-lg bg-[#F5F1E8] border border-[#D8D2C4] space-y-1.5"
+                >
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-bold text-[#1E2A28]">{act.title}</span>
+                    <span className="text-[10px] uppercase font-bold text-[#1F5A48] bg-[#1F5A48]/10 px-2 py-0.5 rounded">
+                      {act.status}
+                    </span>
+                  </div>
+                  <p className="text-xs text-[#1E2A28]/80 leading-relaxed">
+                    {act.description}
+                  </p>
+                  <div className="pt-1 flex flex-wrap items-center justify-between text-[11px] text-[#1E2A28]/60 gap-1">
+                    <span>Logged by: <strong className="text-[#1E2A28]">{act.userName}</strong> ({act.ward})</span>
+                    <span className="text-[#1F5A48] font-bold">
+                      +{(act.impactLiters).toLocaleString()} L Impact
+                    </span>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         </div>
 
@@ -248,66 +273,90 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
           </div>
 
           <div className="space-y-2.5">
-            {pledges.map((p) => {
-              const pledgeLabels: Record<string, string> = {
-                irrigation_timing: 'Night Irrigation & Staggered Schedule',
-                rain_storage: 'Rooftop Rain Harvesting Barrel',
-                aerator_install: 'Tap Aerator & Leak Maintenance',
-                recharge_well_adoption: 'Adopting Community Recharge Well',
-              };
+            {pledges.length === 0 ? (
+              <div className="py-8 text-center text-xs text-[#1E2A28]/60 p-4 rounded-lg bg-[#F5F1E8] border border-[#D8D2C4]">
+                <HeartHandshake className="w-8 h-8 text-[#C56B4C]/30 mx-auto mb-2" />
+                <p className="font-semibold text-[#1E2A28]/80">No household pledges logged for {village.name} yet.</p>
+                <p className="text-[11px] text-[#1E2A28]/55 mt-1">
+                  Click "+ Add Pledge" above to submit a voluntary household water-saving commitment.
+                </p>
+              </div>
+            ) : (
+              pledges.map((p) => {
+                const pledgeLabels: Record<string, string> = {
+                  irrigation_timing: 'Night Irrigation & Staggered Schedule',
+                  rain_storage: 'Rooftop Rain Harvesting Barrel',
+                  aerator_install: 'Tap Aerator & Leak Maintenance',
+                  recharge_well_adoption: 'Adopting Community Recharge Well',
+                };
 
-              return (
-                <div
-                  key={p.id}
-                  className="p-3 rounded-lg bg-[#F5F1E8] border border-[#D8D2C4] flex items-center justify-between text-xs"
-                >
-                  <div>
-                    <span className="font-bold text-[#1E2A28] block">{p.userName}</span>
-                    <span className="text-[11px] text-[#1E2A28]/70">
-                      {pledgeLabels[p.pledgeType] || p.pledgeType}
-                    </span>
+                return (
+                  <div
+                    key={p.id}
+                    className="p-3 rounded-lg bg-[#F5F1E8] border border-[#D8D2C4] flex items-center justify-between text-xs"
+                  >
+                    <div>
+                      <span className="font-bold text-[#1E2A28] block">{p.userName}</span>
+                      <span className="text-[11px] text-[#1E2A28]/70">
+                        {pledgeLabels[p.pledgeType] || p.pledgeType}
+                      </span>
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <span className="font-bold text-xs text-[#1F5A48] block">
+                        {p.targetLitersPerDay} L / day
+                      </span>
+                      <span className="text-[10px] text-[#1E2A28]/50">target saving</span>
+                    </div>
                   </div>
-                  <div className="text-right flex-shrink-0">
-                    <span className="font-bold text-xs text-[#1F5A48] block">
-                      {p.targetLitersPerDay} L / day
-                    </span>
-                    <span className="text-[10px] text-[#1E2A28]/50">target saving</span>
-                  </div>
-                </div>
-              );
-            })}
+                );
+              })
+            )}
           </div>
         </div>
       </div>
 
-      {/* WATER CREDITS — PROPOSED / FUTURE FEATURE */}
-      <section className="bg-[#EAE5DB] border-2 border-dashed border-[#C56B4C]/50 rounded-2xl p-6 sm:p-7 relative">
+      {/* PROPOSED GROUNDWATER ECOLOGICAL MERITS (GEMS) & WATER CREDITS CONCEPT */}
+      <section className="bg-[#EAE5DB] border border-[#D8D2C4] rounded-2xl p-6 sm:p-7 shadow-xs">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-[#D8D2C4]">
           <div className="flex items-center space-x-2">
-            <Award className="w-5 h-5 text-[#C56B4C]" />
-            <h3 className="text-base font-bold text-[#1E2A28]">
-              Proposed Feature: Community Water Credits
-            </h3>
+            <div className="w-8 h-8 rounded-lg bg-[#1F5A48]/15 text-[#1F5A48] flex items-center justify-center">
+              <Award className="w-4 h-4" />
+            </div>
+            <div>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-[#1F5A48] block">
+                Proposed Concept • Future Development
+              </span>
+              <h3 className="text-base font-bold text-[#1E2A28]">
+                Groundwater Ecological Merits (GEMs) & Water Credits
+              </h3>
+            </div>
           </div>
 
-          <span className="px-3 py-1 bg-[#C56B4C]/20 border border-[#C56B4C]/40 text-[#B74A3B] text-xs font-extrabold uppercase tracking-wider rounded-md self-start sm:self-auto">
-            PROPOSED FEATURE — NOT YET IMPLEMENTED
-          </span>
+          <div className="flex items-center space-x-2 self-start sm:self-auto">
+            <span className="px-2.5 py-1 bg-[#1F5A48]/15 text-[#1F5A48] text-xs font-bold rounded-md">
+              Proposed Concept Only
+            </span>
+            <span className="px-2.5 py-1 bg-[#C56B4C]/15 text-[#B74A3B] text-xs font-bold rounded-md">
+              No Tokens Issued
+            </span>
+          </div>
         </div>
 
-        <div className="mt-4 space-y-3 text-xs sm:text-sm text-[#1E2A28]/80 leading-relaxed">
-          <p>
-            The proposed <strong>BhujalSetu Water Credit</strong> mechanism is being designed as a non-monetary community incentive framework.
-            Under this model, farmer groups and residential clusters that systematically de-silt recharge structures, maintain rooftop harvesting,
-            and maintain aquifer-safe pumping hours would earn credits verifiable by the village <em>Pani Samiti</em> (Water Committee).
-          </p>
-
-          <div className="p-3.5 rounded-lg bg-[#F5F1E8] border border-[#D8D2C4] text-xs space-y-1">
-            <div className="font-bold text-[#1E2A28]">Important Implementation & Ethical Boundary:</div>
-            <p className="text-[#1E2A28]/70">
-              BhujalSetu does <strong>not</strong> currently offer real monetary rewards, cash compensation, or cryptocurrency tokens.
-              This concept is strictly under community review to avoid commodification of natural groundwater commons.
-            </p>
+        {/* Concept Explanation Box */}
+        <div className="mt-4 p-5 rounded-xl bg-[#F5F1E8] border border-[#D8D2C4] space-y-3">
+          <div className="flex items-start space-x-2.5 text-xs">
+            <Sparkles className="w-4 h-4 text-[#1F5A48] flex-shrink-0 mt-0.5" />
+            <div>
+              <strong className="text-[#1E2A28] block text-sm">Proposed Incentive Mechanism (For Judges & Community Review):</strong>
+              <p className="text-[#1E2A28]/80 font-medium mt-1 leading-relaxed">
+                Groundwater Ecological Merits (GEMs) and Water Credits represent a conceptual framework designed to explore how verified net recharge stewardship could theoretically be recognized at the village level. Under this proposed design, positive recharge surplus would be recognized as a collective community merit rather than private financial gain.
+              </p>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-3 border-t border-[#D8D2C4]/70 text-[11px] text-[#1E2A28]/70">
+            <div>• <strong>Proposed for Future Development:</strong> This token and credit system is solely a proposed idea to explain the incentive concept to judges. No points, tokens, balances, or redemptions are calculated, awarded, or stored now.</div>
+            <div>• <strong>Requires Stakeholder Agreement:</strong> Any future rollout will require formal participatory agreement from the village community, Gram Panchayat, and regional water authorities before implementation.</div>
+            <div>• <strong>Strictly Non-Monetary:</strong> The proposed merits carry no cash value, cannot be redeemed for fiat currency, and cannot be traded privately.</div>
           </div>
         </div>
       </section>

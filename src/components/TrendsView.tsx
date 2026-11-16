@@ -3,97 +3,113 @@ import {
   LineChart as LineChartIcon,
   Calendar,
   Info,
-  TrendingDown,
+  Radio,
   Layers,
-  CloudRain,
+  Waves,
   ArrowDownToLine,
   ArrowUpFromLine,
   Download,
   Check,
+  Activity,
+  Scale,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
   AreaChart,
   Area,
-  BarChart,
-  Bar,
+  LineChart,
   Line,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
   Legend,
-  ReferenceLine,
-  ComposedChart,
 } from 'recharts';
-import { TimeRange } from '../types/groundwater';
-import { BhujalSetuApi } from '../services/api';
-import { downloadTrendsCsv } from '../utils/csvExport';
+import { TimeRange, NodePrototypeTelemetry, TelemetryConnectionStatus } from '../types/groundwater';
+import { downloadMeasuredTelemetryCsv } from '../utils/csvExport';
 
 interface TrendsViewProps {
   initialRange?: TimeRange;
   villageName?: string;
+  villageId?: string;
+  nodeTelemetry?: NodePrototypeTelemetry[];
+  telemetryStatus?: TelemetryConnectionStatus;
 }
 
 export const TrendsView: React.FC<TrendsViewProps> = ({
   initialRange = '30d',
   villageName = 'Rampur Gram Panchayat',
+  villageId = 'village-rampur-04',
+  nodeTelemetry = [],
+  telemetryStatus = 'ready',
 }) => {
   const [range, setRange] = useState<TimeRange>(initialRange);
-  const [trendData, setTrendData] = useState<any[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
   const [downloadSuccess, setDownloadSuccess] = useState<string | null>(null);
 
-  useEffect(() => {
-    let isMounted = true;
-    setLoading(true);
-    BhujalSetuApi.getTrends(range).then((data) => {
-      if (isMounted) {
-        setTrendData(data);
-        setLoading(false);
-      }
-    });
-    return () => {
-      isMounted = false;
-    };
-  }, [range]);
+  // Filter only measured telemetry records within the requested window
+  const measuredRecords = nodeTelemetry.filter((r) => r.dataSource === 'measured');
 
-  // Editorial custom tooltip for Recharts
-  const CustomTooltip = ({ active, payload, label }: any) => {
-    if (active && payload && payload.length) {
-      return (
-        <div className="bg-[#1E2A28] text-[#F5F1E8] p-3 rounded-lg shadow-lg border border-[#3E524D] text-xs">
-          <div className="font-bold border-b border-[#3E524D] pb-1 text-[#A7D7D7]">
-            {label}
-          </div>
-          <div className="mt-2 space-y-1">
-            {payload.map((item: any, idx: number) => (
-              <div key={idx} className="flex items-center justify-between space-x-3">
-                <span className="flex items-center space-x-1">
-                  <span
-                    className="w-2 h-2 rounded-full inline-block"
-                    style={{ backgroundColor: item.color || item.fill }}
-                  />
-                  <span className="text-[#F5F1E8]/80">{item.name}:</span>
-                </span>
-                <span className="font-mono font-bold text-[#F5F1E8]">
-                  {typeof item.value === 'number'
-                    ? item.value.toLocaleString()
-                    : item.value}{' '}
-                  {item.unit || ''}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      );
-    }
-    return null;
-  };
+  const filteredRecords = measuredRecords.filter((record) => {
+    const recordTime = new Date(record.capturedAt).getTime();
+    if (isNaN(recordTime)) return true;
+    const days = range === '7d' ? 7 : range === '90d' ? 90 : 30;
+    const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+    return recordTime >= cutoff;
+  });
+
+  const sortedRecords = [...filteredRecords].sort((a, b) =>
+    a.capturedAt.localeCompare(b.capturedAt)
+  );
+
+  // Flow rate history (Node 1 recharge vs Node 2 extraction)
+  const flowRateData = sortedRecords.map((r) => ({
+    time: new Date(r.capturedAt).toLocaleTimeString([], {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    }),
+    node1Flow: r.nodeId === 'node-1' ? r.flow.flowLpm : null,
+    node2Flow: r.nodeId === 'node-2' ? r.flow.flowLpm : null,
+  }));
+
+  // Tank water level history (Node 1 HC-SR04 in cm)
+  const tankLevelData = sortedRecords
+    .filter((r) => r.nodeId === 'node-1' && r.waterLevel)
+    .map((r) => ({
+      time: new Date(r.capturedAt).toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+      }),
+      levelCm: r.waterLevel!.levelCm,
+      distanceCm: r.waterLevel!.distanceCm,
+    }));
+
+  // Cumulative session volume history (Node 1 vs Node 2)
+  const volumeData = sortedRecords.map((r) => ({
+    time: new Date(r.capturedAt).toLocaleTimeString([], {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    }),
+    node1Total: r.nodeId === 'node-1' ? r.flow.totalLiters : null,
+    node2Total: r.nodeId === 'node-2' ? r.flow.totalLiters : null,
+  }));
+
+  // Pulse frequency history (Hz)
+  const frequencyData = sortedRecords.map((r) => ({
+    time: new Date(r.capturedAt).toLocaleTimeString([], {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    }),
+    node1Hz: r.nodeId === 'node-1' ? r.flow.frequencyHz : null,
+    node2Hz: r.nodeId === 'node-2' ? r.flow.frequencyHz : null,
+  }));
 
   const handleDownloadCsv = () => {
-    if (!trendData || trendData.length === 0) return;
-    const result = downloadTrendsCsv(trendData, villageName, range);
+    if (sortedRecords.length === 0) return;
+    const result = downloadMeasuredTelemetryCsv(sortedRecords, villageName, range);
     setDownloadSuccess(result.filename);
     setTimeout(() => {
       setDownloadSuccess(null);
@@ -105,15 +121,15 @@ export const TrendsView: React.FC<TrendsViewProps> = ({
       {/* Header & Range Selector */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-[#D8D2C4]">
         <div>
-          <div className="inline-flex items-center space-x-1.5 text-xs font-bold uppercase tracking-wider text-[#3B7C8A] mb-1">
+          <div className="inline-flex items-center space-x-1.5 text-xs font-bold uppercase tracking-wider text-[#1F5A48] mb-1">
             <LineChartIcon className="w-3.5 h-3.5" />
-            <span>Aquifer Dynamics</span>
+            <span>Two-Node Hardware History</span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-extrabold text-[#1E2A28]">
-            Hydrological Trends
+            Measured Prototype Trends
           </h1>
           <p className="text-xs sm:text-sm text-[#1E2A28]/70 mt-0.5">
-            Historical time-series correlation between precipitation, pumping stress, and water table recovery.
+            Historical time-series telemetry from authenticated Node 1 and Node 2 hardware packets.
           </p>
         </div>
 
@@ -123,9 +139,9 @@ export const TrendsView: React.FC<TrendsViewProps> = ({
           <button
             type="button"
             onClick={handleDownloadCsv}
-            disabled={loading || trendData.length === 0}
+            disabled={sortedRecords.length === 0}
             className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-[#EAE5DB] hover:bg-[#E2DDD2] text-[#1E2A28] border border-[#D8D2C4] text-xs font-semibold shadow-2xs transition-colors cursor-pointer disabled:opacity-50"
-            title="Export current trend data as formatted CSV for offline community reporting"
+            title={sortedRecords.length === 0 ? 'No measured records available to export' : 'Export verified telemetry to CSV'}
           >
             {downloadSuccess ? (
               <>
@@ -135,7 +151,7 @@ export const TrendsView: React.FC<TrendsViewProps> = ({
             ) : (
               <>
                 <Download className="w-3.5 h-3.5 text-[#3B7C8A]" />
-                <span>Download Report (CSV)</span>
+                <span>Export Sensor CSV ({sortedRecords.length})</span>
               </>
             )}
           </button>
@@ -166,7 +182,7 @@ export const TrendsView: React.FC<TrendsViewProps> = ({
           <div className="flex items-center space-x-2">
             <Check className="w-4 h-4 flex-shrink-0" />
             <span>
-              <strong>CSV Report Exported:</strong> <code className="font-mono text-[11px] bg-[#1F5A48]/10 px-1 py-0.5 rounded">{downloadSuccess}</code> ({trendData.length} records ready for offline Pani Samiti audit).
+              <strong>CSV Report Exported:</strong> <code className="font-mono text-[11px] bg-[#1F5A48]/10 px-1 py-0.5 rounded">{downloadSuccess}</code> ({sortedRecords.length} measured records exported).
             </span>
           </div>
           <button
@@ -179,259 +195,281 @@ export const TrendsView: React.FC<TrendsViewProps> = ({
         </div>
       )}
 
-      {/* Prominent Simulated Data Notice Banner */}
-      <div className="p-3 rounded-lg bg-[#C56B4C]/15 border border-[#C56B4C]/30 flex items-center justify-between text-xs text-[#B74A3B]">
+      {/* Physical Boundary & Data Source Notice */}
+      <div className="p-3.5 rounded-lg bg-[#EAE5DB] border border-[#D8D2C4] flex items-center justify-between text-xs text-[#1E2A28]">
         <div className="flex items-center space-x-2">
-          <Info className="w-4 h-4 flex-shrink-0" />
-          <span className="font-bold">
-            DEMO / SIMULATED TIME-SERIES DATA:
-          </span>
-          <span className="hidden md:inline text-[#1E2A28]/80">
-            Charts display modeled seasonal variations to demonstrate dashboard visualization capabilities prior to live IoT gateway integration.
+          <Info className="w-4 h-4 text-[#1F5A48] flex-shrink-0" />
+          <span>
+            <strong className="text-[#1E2A28]">Authenticated Prototype Telemetry:</strong> Charts display verified records from Node 1 (recharge flow & tabletop tank level) and Node 2 (pump extraction flow) for <strong>{villageName}</strong>. Tabletop sensors measure bench flow only; they do not calculate aquifer depth or community water balance.
           </span>
         </div>
-        <span className="text-[10px] font-semibold uppercase px-2 py-0.5 bg-[#B74A3B] text-white rounded">
-          {range.toUpperCase()} Window
+        <span className="text-[10px] font-semibold uppercase px-2 py-0.5 bg-[#1F5A48]/10 text-[#1F5A48] rounded hidden sm:inline-block">
+          {sortedRecords.length} Measured Records
         </span>
       </div>
 
-      {loading ? (
-        <div className="py-24 text-center text-sm text-[#1E2A28]/60">
-          Loading simulated time series...
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* CHART 1: Groundwater Level Over Time */}
-          <div className="bg-[#EAE5DB] border border-[#D8D2C4] rounded-xl p-5 shadow-xs flex flex-col justify-between">
-            <div>
-              <div className="flex items-center justify-between pb-2 border-b border-[#D8D2C4]">
-                <div>
-                  <h3 className="font-bold text-sm text-[#1E2A28]">
-                    1. Groundwater Level Over Time
-                  </h3>
-                  <span className="text-[11px] text-[#1E2A28]/60">
-                    Depth to water table in meters (deeper = lower water storage)
-                  </span>
-                </div>
-                <span className="text-xs font-bold text-[#3B7C8A] bg-[#3B7C8A]/10 px-2 py-0.5 rounded">
-                  Piezometer Depth
+      {/* 4 Authentic Measured Sensor Charts */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* CHART 1: Flow Rate History (L/min) */}
+        <div className="bg-[#EAE5DB] border border-[#D8D2C4] rounded-xl p-5 shadow-xs flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between pb-2 border-b border-[#D8D2C4]">
+              <div>
+                <h3 className="font-bold text-sm text-[#1E2A28]">
+                  1. Prototype Flow Rate History
+                </h3>
+                <span className="text-[11px] text-[#1E2A28]/60">
+                  Real-time flow rate in Litres per minute (YF-S201 turbines)
                 </span>
               </div>
+              <span className="text-xs font-bold text-[#1F5A48] bg-[#1F5A48]/10 px-2 py-0.5 rounded">
+                L/min
+              </span>
+            </div>
 
-              <div className="h-64 mt-4 w-full">
+            <div className="h-64 mt-4 w-full">
+              {flowRateData.length > 0 ? (
                 <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={trendData} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
+                  <LineChart data={flowRateData} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#D8D2C4" opacity={0.6} />
+                    <XAxis dataKey="time" minTickGap={28} tick={{ fontSize: 9, fill: '#1E2A28' }} stroke="#D8D2C4" />
+                    <YAxis tick={{ fontSize: 9, fill: '#1E2A28' }} stroke="#D8D2C4" unit=" L/m" />
+                    <Tooltip />
+                    <Legend wrapperStyle={{ fontSize: 10, paddingTop: 6 }} />
+                    <Line
+                      type="monotone"
+                      dataKey="node1Flow"
+                      name="Node 1 Recharge Flow"
+                      stroke="#1F5A48"
+                      strokeWidth={2}
+                      dot={false}
+                      connectNulls
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="node2Flow"
+                      name="Node 2 Extraction Flow"
+                      stroke="#C56B4C"
+                      strokeWidth={2}
+                      dot={false}
+                      connectNulls
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="h-full flex flex-col items-center justify-center text-center p-4">
+                  <Radio className="w-8 h-8 text-[#1E2A28]/30 mb-2" />
+                  <p className="text-xs font-semibold text-[#1E2A28]/70">
+                    Waiting for measured flow history for {villageName}.
+                  </p>
+                  <p className="text-[11px] text-[#1E2A28]/50 mt-1 max-w-sm">
+                    No flow packets recorded in this time range. ESP32 Node 1 and Node 2 must be transmitting measured readings.
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="mt-3 pt-2 border-t border-[#D8D2C4] flex items-center justify-between text-[11px] text-[#1E2A28]/70">
+            <span>Inlet (Node 1) vs Extraction Hose (Node 2)</span>
+            <span className="font-semibold text-[#1F5A48]">{flowRateData.length} samples</span>
+          </div>
+        </div>
+
+        {/* CHART 2: Tabletop Tank Water Level (cm) */}
+        <div className="bg-[#EAE5DB] border border-[#D8D2C4] rounded-xl p-5 shadow-xs flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between pb-2 border-b border-[#D8D2C4]">
+              <div>
+                <h3 className="font-bold text-sm text-[#1E2A28]">
+                  2. Tabletop Tank Water Level
+                </h3>
+                <span className="text-[11px] text-[#1E2A28]/60">
+                  Node 1 HC-SR04 ultrasonic echo distance to tank water surface (cm)
+                </span>
+              </div>
+              <span className="text-xs font-bold text-[#3B7C8A] bg-[#3B7C8A]/10 px-2 py-0.5 rounded">
+                Tank Level (cm)
+              </span>
+            </div>
+
+            <div className="h-64 mt-4 w-full">
+              {tankLevelData.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={tankLevelData} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
                     <defs>
-                      <linearGradient id="depthGradient" x1="0" y1="0" x2="0" y2="1">
+                      <linearGradient id="tankLevelGradient" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="5%" stopColor="#3B7C8A" stopOpacity={0.4} />
                         <stop offset="95%" stopColor="#3B7C8A" stopOpacity={0.05} />
                       </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" stroke="#D8D2C4" opacity={0.6} />
-                    <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#1E2A28' }} stroke="#D8D2C4" />
-                    <YAxis
-                      domain={['dataMin - 0.5', 'dataMax + 0.5']}
-                      tick={{ fontSize: 10, fill: '#1E2A28' }}
-                      stroke="#D8D2C4"
-                      unit="m"
-                    />
-                    <Tooltip content={<CustomTooltip />} />
-                    <ReferenceLine
-                      y={17.5}
-                      stroke="#C56B4C"
-                      strokeDasharray="4 4"
-                      label={{ value: 'Watch Depth: 17.5m', position: 'insideTopRight', fill: '#C56B4C', fontSize: 10 }}
-                    />
+                    <XAxis dataKey="time" minTickGap={28} tick={{ fontSize: 9, fill: '#1E2A28' }} stroke="#D8D2C4" />
+                    <YAxis tick={{ fontSize: 9, fill: '#1E2A28' }} stroke="#D8D2C4" unit=" cm" />
+                    <Tooltip />
                     <Area
                       type="monotone"
-                      dataKey="depthMeters"
-                      name="Water Table Depth"
-                      unit="m"
+                      dataKey="levelCm"
+                      name="Tank Water Level"
+                      unit=" cm"
                       stroke="#3B7C8A"
-                      strokeWidth={2.5}
-                      fillOpacity={1}
-                      fill="url(#depthGradient)"
+                      strokeWidth={2}
+                      fill="url(#tankLevelGradient)"
                     />
                   </AreaChart>
                 </ResponsiveContainer>
-              </div>
-            </div>
-
-            <div className="mt-3 pt-2 border-t border-[#D8D2C4] flex items-center justify-between text-[11px] text-[#1E2A28]/70">
-              <span>Baseline: 17.5 m below ground</span>
-              <span className="font-semibold text-[#B74A3B]">Recent trend: -0.6 m drop</span>
+              ) : (
+                <div className="h-full flex flex-col items-center justify-center text-center p-4">
+                  <Waves className="w-8 h-8 text-[#1E2A28]/30 mb-2" />
+                  <p className="text-xs font-semibold text-[#1E2A28]/70">
+                    Waiting for Node 1 tank level readings.
+                  </p>
+                  <p className="text-[11px] text-[#1E2A28]/50 mt-1 max-w-sm">
+                    Measures tabletop bench tank depth in centimetres (not community aquifer depth).
+                  </p>
+                </div>
+              )}
             </div>
           </div>
 
-          {/* CHART 2: Water Extraction Over Time */}
-          <div className="bg-[#EAE5DB] border border-[#D8D2C4] rounded-xl p-5 shadow-xs flex flex-col justify-between">
-            <div>
-              <div className="flex items-center justify-between pb-2 border-b border-[#D8D2C4]">
-                <div>
-                  <h3 className="font-bold text-sm text-[#1E2A28]">
-                    2. Community Water Extraction Over Time
-                  </h3>
-                  <span className="text-[11px] text-[#1E2A28]/60">
-                    Daily total extraction volume across all monitored borewells (m³)
-                  </span>
-                </div>
-                <div className="w-7 h-7 rounded-md bg-[#C56B4C]/15 text-[#C56B4C] flex items-center justify-center">
-                  <ArrowUpFromLine className="w-4 h-4" />
-                </div>
-              </div>
-
-              <div className="h-64 mt-4 w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={trendData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#D8D2C4" opacity={0.6} />
-                    <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#1E2A28' }} stroke="#D8D2C4" />
-                    <YAxis
-                      tick={{ fontSize: 10, fill: '#1E2A28' }}
-                      stroke="#D8D2C4"
-                      unit="kL"
-                      tickFormatter={(val) => `${Math.round(val / 1000)}`}
-                    />
-                    <Tooltip content={<CustomTooltip />} />
-                    <ReferenceLine
-                      y={42000}
-                      stroke="#1F5A48"
-                      strokeDasharray="4 4"
-                      label={{ value: 'Sustainable Ceiling: 42 kL', position: 'insideTopLeft', fill: '#1F5A48', fontSize: 10 }}
-                    />
-                    <Bar
-                      dataKey="waterExtractedLiters"
-                      name="Extracted Water"
-                      unit="L"
-                      fill="#C56B4C"
-                      radius={[4, 4, 0, 0]}
-                    />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-
-            <div className="mt-3 pt-2 border-t border-[#D8D2C4] flex items-center justify-between text-[11px] text-[#1E2A28]/70">
-              <span>Avg Extraction: ~46,500 L/day</span>
-              <span className="font-semibold text-[#C56B4C]">Peak: 54,000 L</span>
-            </div>
-          </div>
-
-          {/* CHART 3: Rainfall vs Groundwater Level */}
-          <div className="bg-[#EAE5DB] border border-[#D8D2C4] rounded-xl p-5 shadow-xs flex flex-col justify-between">
-            <div>
-              <div className="flex items-center justify-between pb-2 border-b border-[#D8D2C4]">
-                <div>
-                  <h3 className="font-bold text-sm text-[#1E2A28]">
-                    3. Rainfall Inflow vs Groundwater Level
-                  </h3>
-                  <span className="text-[11px] text-[#1E2A28]/60">
-                    Dual axis: Rainfall bars (mm) and Aquifer depth recovery (m)
-                  </span>
-                </div>
-                <div className="w-7 h-7 rounded-md bg-[#3B7C8A]/15 text-[#3B7C8A] flex items-center justify-center">
-                  <CloudRain className="w-4 h-4" />
-                </div>
-              </div>
-
-              <div className="h-64 mt-4 w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <ComposedChart data={trendData} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#D8D2C4" opacity={0.6} />
-                    <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#1E2A28' }} stroke="#D8D2C4" />
-                    <YAxis
-                      yAxisId="left"
-                      orientation="left"
-                      stroke="#3B7C8A"
-                      tick={{ fontSize: 10, fill: '#3B7C8A' }}
-                      unit="mm"
-                    />
-                    <YAxis
-                      yAxisId="right"
-                      orientation="right"
-                      stroke="#1F5A48"
-                      tick={{ fontSize: 10, fill: '#1F5A48' }}
-                      domain={['dataMin - 0.5', 'dataMax + 0.5']}
-                      unit="m"
-                    />
-                    <Tooltip content={<CustomTooltip />} />
-                    <Legend wrapperStyle={{ fontSize: 11, paddingTop: 6 }} />
-                    <Bar
-                      yAxisId="left"
-                      dataKey="rainfallMm"
-                      name="Precipitation"
-                      unit="mm"
-                      fill="#A7D7D7"
-                      radius={[3, 3, 0, 0]}
-                    />
-                    <Line
-                      yAxisId="right"
-                      type="monotone"
-                      dataKey="depthMeters"
-                      name="Depth to Water"
-                      unit="m"
-                      stroke="#1F5A48"
-                      strokeWidth={2.5}
-                      dot={false}
-                    />
-                  </ComposedChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-
-            <div className="mt-3 pt-2 border-t border-[#D8D2C4] flex items-center justify-between text-[11px] text-[#1E2A28]/70">
-              <span>Noticeable 24h recharge lag following precipitation pulses</span>
-              <span className="font-semibold text-[#1F5A48]">Infiltration confirmed</span>
-            </div>
-          </div>
-
-          {/* CHART 4: Managed Recharge Activity */}
-          <div className="bg-[#EAE5DB] border border-[#D8D2C4] rounded-xl p-5 shadow-xs flex flex-col justify-between">
-            <div>
-              <div className="flex items-center justify-between pb-2 border-b border-[#D8D2C4]">
-                <div>
-                  <h3 className="font-bold text-sm text-[#1E2A28]">
-                    4. Managed Recharge Infiltration Volume
-                  </h3>
-                  <span className="text-[11px] text-[#1E2A28]/60">
-                    Volume channeled directly into sub-surface structures (Liters)
-                  </span>
-                </div>
-                <div className="w-7 h-7 rounded-md bg-[#1F5A48]/15 text-[#1F5A48] flex items-center justify-center">
-                  <ArrowDownToLine className="w-4 h-4" />
-                </div>
-              </div>
-
-              <div className="h-64 mt-4 w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={trendData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#D8D2C4" opacity={0.6} />
-                    <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#1E2A28' }} stroke="#D8D2C4" />
-                    <YAxis
-                      tick={{ fontSize: 10, fill: '#1E2A28' }}
-                      stroke="#D8D2C4"
-                      unit="kL"
-                      tickFormatter={(val) => `${Math.round(val / 1000)}`}
-                    />
-                    <Tooltip content={<CustomTooltip />} />
-                    <Bar
-                      dataKey="waterRechargedLiters"
-                      name="Recharged Volume"
-                      unit="L"
-                      fill="#1F5A48"
-                      radius={[4, 4, 0, 0]}
-                    />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-
-            <div className="mt-3 pt-2 border-t border-[#D8D2C4] flex items-center justify-between text-[11px] text-[#1E2A28]/70">
-              <span>Cumulative Recharged: {(trendData.reduce((acc: number, curr: any) => acc + (curr.waterRechargedLiters || 0), 0) / 1000).toFixed(1)} m³</span>
-              <span className="font-semibold text-[#1F5A48]">7 Active Pits</span>
-            </div>
+          <div className="mt-3 pt-2 border-t border-[#D8D2C4] flex items-center justify-between text-[11px] text-[#1E2A28]/70">
+            <span>Tabletop reservoir depth only</span>
+            <span className="font-semibold text-[#3B7C8A]">{tankLevelData.length} samples</span>
           </div>
         </div>
-      )}
+
+        {/* CHART 3: Cumulative Volume Ingested (Liters) */}
+        <div className="bg-[#EAE5DB] border border-[#D8D2C4] rounded-xl p-5 shadow-xs flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between pb-2 border-b border-[#D8D2C4]">
+              <div>
+                <h3 className="font-bold text-sm text-[#1E2A28]">
+                  3. Cumulative Session Volume
+                </h3>
+                <span className="text-[11px] text-[#1E2A28]/60">
+                  Independent session pulse totals recorded per microcontroller (Liters)
+                </span>
+              </div>
+              <div className="w-7 h-7 rounded-md bg-[#1F5A48]/15 text-[#1F5A48] flex items-center justify-center">
+                <Scale className="w-4 h-4" />
+              </div>
+            </div>
+
+            <div className="h-64 mt-4 w-full">
+              {volumeData.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={volumeData} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#D8D2C4" opacity={0.6} />
+                    <XAxis dataKey="time" minTickGap={28} tick={{ fontSize: 9, fill: '#1E2A28' }} stroke="#D8D2C4" />
+                    <YAxis tick={{ fontSize: 9, fill: '#1E2A28' }} stroke="#D8D2C4" unit=" L" />
+                    <Tooltip />
+                    <Legend wrapperStyle={{ fontSize: 10, paddingTop: 6 }} />
+                    <Line
+                      type="monotone"
+                      dataKey="node1Total"
+                      name="Node 1 Inflow Total"
+                      stroke="#1F5A48"
+                      strokeWidth={2}
+                      dot={false}
+                      connectNulls
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="node2Total"
+                      name="Node 2 Outflow Total"
+                      stroke="#C56B4C"
+                      strokeWidth={2}
+                      dot={false}
+                      connectNulls
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="h-full flex flex-col items-center justify-center text-center p-4">
+                  <Scale className="w-8 h-8 text-[#1E2A28]/30 mb-2" />
+                  <p className="text-xs font-semibold text-[#1E2A28]/70">
+                    Waiting for session volume records.
+                  </p>
+                  <p className="text-[11px] text-[#1E2A28]/50 mt-1 max-w-sm">
+                    Microcontroller volume counters reset independently upon power-cycling each board.
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="mt-3 pt-2 border-t border-[#D8D2C4] flex items-center justify-between text-[11px] text-[#1E2A28]/70">
+            <span>Independent node counters shown separately</span>
+            <span className="font-semibold text-[#1E2A28]/70">{volumeData.length} records</span>
+          </div>
+        </div>
+
+        {/* CHART 4: Flow Pulse Frequency (Hz) */}
+        <div className="bg-[#EAE5DB] border border-[#D8D2C4] rounded-xl p-5 shadow-xs flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between pb-2 border-b border-[#D8D2C4]">
+              <div>
+                <h3 className="font-bold text-sm text-[#1E2A28]">
+                  4. Flow Turbine Pulse Frequency
+                </h3>
+                <span className="text-[11px] text-[#1E2A28]/60">
+                  Hall effect sensor interrupt pulse frequency across sampling windows (Hz)
+                </span>
+              </div>
+              <div className="w-7 h-7 rounded-md bg-[#3B7C8A]/15 text-[#3B7C8A] flex items-center justify-center">
+                <Activity className="w-4 h-4" />
+              </div>
+            </div>
+
+            <div className="h-64 mt-4 w-full">
+              {frequencyData.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={frequencyData} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#D8D2C4" opacity={0.6} />
+                    <XAxis dataKey="time" minTickGap={28} tick={{ fontSize: 9, fill: '#1E2A28' }} stroke="#D8D2C4" />
+                    <YAxis tick={{ fontSize: 9, fill: '#1E2A28' }} stroke="#D8D2C4" unit=" Hz" />
+                    <Tooltip />
+                    <Legend wrapperStyle={{ fontSize: 10, paddingTop: 6 }} />
+                    <Line
+                      type="monotone"
+                      dataKey="node1Hz"
+                      name="Node 1 Pulse Freq (Hz)"
+                      stroke="#1F5A48"
+                      strokeWidth={1.5}
+                      dot={false}
+                      connectNulls
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="node2Hz"
+                      name="Node 2 Pulse Freq (Hz)"
+                      stroke="#C56B4C"
+                      strokeWidth={1.5}
+                      dot={false}
+                      connectNulls
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="h-full flex flex-col items-center justify-center text-center p-4">
+                  <Activity className="w-8 h-8 text-[#1E2A28]/30 mb-2" />
+                  <p className="text-xs font-semibold text-[#1E2A28]/70">
+                    Waiting for turbine frequency records.
+                  </p>
+                  <p className="text-[11px] text-[#1E2A28]/50 mt-1 max-w-sm">
+                    Interrupt pulse frequencies will plot as water passes through the YF-S201 sensors.
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="mt-3 pt-2 border-t border-[#D8D2C4] flex items-center justify-between text-[11px] text-[#1E2A28]/70">
+            <span>Physical turbine interrupt signals</span>
+            <span className="font-semibold text-[#1E2A28]/70">{frequencyData.length} records</span>
+          </div>
+        </div>
+      </div>
     </div>
   );
 };
