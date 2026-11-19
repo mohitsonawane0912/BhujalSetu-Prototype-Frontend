@@ -1,6 +1,6 @@
-# Two-Node Sensor Backend & Dashboard Setup Guide
+# Two-Node Sensor Backend & Dashboard Setup Guide (PostgreSQL Competition Edition)
 
-This guide describes how to configure, calibrate, and run the **BhujalSetu** two-node tabletop demonstration.
+This guide describes how to configure, calibrate, and run the **BhujalSetu** two-node tabletop demonstration using local PostgreSQL and Express.
 
 ---
 
@@ -21,7 +21,7 @@ The tabletop demonstration uses two ESP32-WROOM-32 microcontrollers communicatin
   - **Never** power a pump from an ESP32 GPIO pin or 3.3V rail. Always use an isolated, separate DC power supply with a physical manual switch.
 - **Hydrological & Policy Boundary:**
   - The sensors measure tabletop flow and tank level only. Do **not** present these readings as a community aquifer measurement or use them to claim a scientifically measured recharge/groundwater balance.
-  - **Water Credits & GEM points** have no approved value, formula, conversion, or award policy. Cash and non-cash recognition are possibilities under future discussion with local organizations and BMC/PMC; the application does not calculate or issue credits.
+  - **Water Credits & GEM points** are solely a proposed incentive idea to explain to judges for future exploration. The application does not calculate, award, track balances for, or redeem credits or tokens.
 
 ---
 
@@ -89,8 +89,8 @@ The backend and ESP32 nodes communicate over your local Wi-Fi network.
 
 ### Step 2: Configure Firmware Secrets
 
-1. Open `firmware/two_node_wifi/`.
-2. Copy `secrets.example.h` to `secrets.h` (this file is ignored by Git and must **never** be committed):
+1. Open `firmware/two_node_wifi/bhujalsetu_wifi_node/`.
+2. Ensure `secrets.h` is present (this file is ignored by Git and must **never** be committed):
    ```c
    #pragma once
    #define BHUJAL_WIFI_SSID "YOUR_2_4_GHZ_WIFI_NAME"
@@ -102,7 +102,7 @@ The backend and ESP32 nodes communicate over your local Wi-Fi network.
 
 ### Step 3: Flash Node 1 (Recharge Line)
 
-1. Open `firmware/two_node_wifi/bhujalsetu_wifi_node.ino` in Arduino IDE.
+1. Open `firmware/two_node_wifi/bhujalsetu_wifi_node/bhujalsetu_wifi_node.ino` in Arduino IDE.
 2. Confirm the top lines are configured for Node 1:
    ```c
    #define NODE_ID "node-1"
@@ -128,7 +128,7 @@ The backend and ESP32 nodes communicate over your local Wi-Fi network.
 
 ## 4.5. Expected Node Packet Specification (POST /api/v1/telemetry)
 
-When preparing firmware for Wi-Fi transmission, the Express backend validates packets strictly against [server/nodeTelemetrySchema.ts](../server/nodeTelemetrySchema.ts). Only packets with `dataSource: "measured"` are accepted in production.
+The Express backend validates packets strictly against `server/nodeTelemetrySchema.ts`. Only packets with `dataSource: "measured"` are accepted.
 
 ### A. Node 1 Packet (Recharge Flow + Tabletop Tank Level)
 
@@ -158,13 +158,6 @@ When preparing firmware for Wi-Fi transmission, the Express backend validates pa
     }
   }
   ```
-- **Validation Rules**:
-  - `waterLevel` is **required** on Node 1.
-  - `waterLevel.distanceCm`: finite number between `2.0` and `400.0`.
-  - `waterLevel.levelCm`: finite number between `0.0` and `400.0` (calculated as `TANK_USABLE_HEIGHT_CM - distanceCm`).
-  - `flow.pulses`: non-negative integer.
-  - `flow.flowLpm`: non-negative number up to 120 L/min.
-  - `capturedAt`: ISO 8601 UTC timestamp string.
 
 ### B. Node 2 Packet (Pump Extraction Flow Only)
 
@@ -190,132 +183,177 @@ When preparing firmware for Wi-Fi transmission, the Express backend validates pa
     }
   }
   ```
-- **Validation Rules**:
-  - `waterLevel` must **not** be present in Node 2 packets.
-  - The pump is operated manually; there are no pump control or relay status fields.
-  - `flow.totalLiters` represents Node 2 session volume and is tracked independently from Node 1.
 
 ---
 
-## 5. Backend Configuration & Firebase Setup
+## 5. Local PostgreSQL Database Configuration
 
-The backend handles device authentication, payload validation, and persistence to Firestore.
+The competition backend stores sensor packets and community records in a local PostgreSQL database through Express.
 
-### Local Environment Variables (.env.local)
+### Starting PostgreSQL:
+```bash
+# Start background service
+brew services start postgresql@16
 
-Create `.env.local` in the project root (never commit this file):
+# Or manual start:
+/opt/homebrew/opt/postgresql@16/bin/pg_ctl -D /opt/homebrew/var/postgresql@16 start
+```
 
+### Initializing Database & Migrations:
+```bash
+createdb bhujalsetu_dev
+npm run db:migrate
+```
+
+### Starting Backend & Frontend:
+
+You can start the full development environment either using the unified runner or using two separate Terminal windows:
+
+**Option A (Unified runner):**
+```bash
+npm run dev:all
+```
+
+**Option B (Two separate Terminal windows - Recommended for clear per-service logs):**
+```bash
+# Terminal 1 - Express API Backend (port 5001 or configured PORT)
+npm run server
+
+# Terminal 2 - Vite Dashboard Frontend (port 3000)
+npm run dev
+```
+
+### Configuration Environment Variables (.env.local):
 ```bash
 PORT=5001
+JWT_SECRET=your_minimum_32_character_random_secret_here
 DEVICE_API_KEY=your_shared_or_fallback_32_character_key
 NODE_1_DEVICE_API_KEY=unique_private_key_for_node_1
 NODE_2_DEVICE_API_KEY=unique_private_key_for_node_2
 
-# Firebase Admin Service Account Credentials (Server-side persistence)
-FIREBASE_PROJECT_ID=gen-lang-client-0038143503
+# PostgreSQL Settings
+PGHOST=localhost
+PGPORT=5432
+PGDATABASE=bhujalsetu_dev
+PGUSER=mohitsonawane
+PGPASSWORD=
 
-# Option A (Recommended): Point to downloaded service account JSON file
-FIREBASE_SERVICE_ACCOUNT_PATH=./service-account.json
-
-# Option B (Alternative): Specify email and private key directly in environment
-# FIREBASE_CLIENT_EMAIL=your-service-account@gen-lang-client-0038143503.iam.gserviceaccount.com
-# FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\nMIIEvgIBADANBgkq...your_key_here...\n-----END PRIVATE KEY-----\n"
-
-# Optional Gemini AI Advice API Key
+# Optional Gemini Advisor API Key
 GEMINI_API_KEY=your_gemini_api_key
 ```
 
-> **Note on Service Account Credentials:**
-> Without valid Firebase Admin credentials (either `FIREBASE_SERVICE_ACCOUNT_PATH` pointing to an existing JSON key file, or `FIREBASE_CLIENT_EMAIL` and `FIREBASE_PRIVATE_KEY`), the backend reports `firebase: not_configured` at `/api/health`. In production, telemetry persistence returns `HTTP 503` so unpersisted samples are never falsely claimed as stored.
+---
 
-To generate a Firebase Admin private key:
-1. Open [Firebase Console](https://console.firebase.google.com/project/gen-lang-client-0038143503/settings/serviceaccounts/adminsdk).
-2. Click **Generate new private key**.
-3. **For Option A (Recommended):** Save the downloaded JSON file into your project root as `service-account.json` (this file name is already ignored by `.gitignore`). Set `FIREBASE_SERVICE_ACCOUNT_PATH=./service-account.json` in `.env.local`.
-4. **For Option B (Alternative):** Open the JSON file in an editor, copy `client_email` and `private_key` into `.env.local`, preserving literal `\n` characters in the private key string.
+## 6. Extraction Anomaly Detector & Freshness Architecture
+
+### A. Anomaly Detector Parameters & Alert Lifecycle
+- **Baseline Requirement:** At least **10 active pumping samples** ($\ge 0.2$ L/min) of measured Node 2 telemetry must be recorded before an operating baseline is established. While under 10 samples, the baseline status is reported as `building_baseline`.
+- **Robust Statistical Baseline:** Computes a **10% symmetric trimmed mean** of active historical samples to discard pump startup/shutdown turbulence.
+- **Anomaly Trigger Criteria:** Triggers when current extraction flow $> 0.2$ L/min, flow ratio $\ge 1.8\times$ baseline, and flow delta $\ge 2.0$ L/min.
+- **Alert Recovery & Clearing:** An alert requires **two distinct consecutive normal packets** (flow $\le 1.3\times$ baseline or $< 0.2$ L/min from distinct timestamps) to clear.
+- **Recovery Visibility:** When the flow returns to normal after a surge, the backend maintains the alert in `status: ACTIVE` after the first normal reading. The frontend dashboard and alert API keep the warning visible until the second distinct normal packet arrives, at which point the alert transitions to `status: CLEARED`.
+- **Security & Authorization:** `/api/alerts`, `/api/telemetry/extraction-anomaly`, and `/api/ai/advice` strictly require authenticated active community membership. Community ID is derived server-side from verified user credentials; query parameters attempting to select other communities are rejected with HTTP 403.
+
+### B. Reliable Server Freshness Clock
+- **Freshness Source:** Sensor packet staleness is evaluated strictly against the server-side arrival timestamp (`receivedAt`), with fallback to `capturedAt` only if `receivedAt` is absent. This protects against unsynchronized ESP32 internal clocks or RTC drift.
+- **Stale Threshold:** Unified at **45 seconds** (`45_000` ms) across the AI Advisor, anomaly detector, and dashboard. Telemetry older than 45s is marked as offline/stale and triggers `WAITING_FOR_DATA`.
+
+### C. Community Geographic Coordinates
+- Community coordinates (latitude -90 to 90, longitude -180 to 180) are optionally configured during community registration in the welcome flow.
+- If coordinates are absent or invalid, the external weather module returns an honest `unconfigured` status; no synthetic forecasts are generated.
 
 ---
 
-## 6. Firestore Rules, Indexes & Community Membership
+## 7. Local Authentication & Administrator Provisioning
 
-### Target Database & Rules Status
-
-- **Firebase Project:** `gen-lang-client-0038143503` (configured in `.firebaserc`)
-- **Target Firestore Database:** `ai-studio-b5c8fea1-15ca-479c-80da-b20daf9c036d` (configured in `firebase.json` and `firebase-applet-config.json`)
-- **Deployment Status:** Firestore security rules and composite indexes have been successfully deployed. Security rules restrict access to collection `prototype_node_telemetry` and `prototype_telemetry` to users with confirmed membership in `community_memberships`.
-
-### Provisioning Authorized Community Members
-
-A community selector is **not** authorization. Access to live and historical node telemetry requires an active membership document in Firestore:
-
-1. Open Firebase Console → Authentication → Users, and copy the user's `UID`.
-2. Open Firestore → database `ai-studio-b5c8fea1-15ca-479c-80da-b20daf9c036d` → collection `community_memberships`.
-3. Create document with ID: `{UID}_{villageId}` (e.g., `abc12345_village-rampur-04`).
-4. Set fields:
-   - `userId` (string): the user's UID
-   - `villageId` (string): `village-rampur-04`
-   - `status` (string): `active`
-5. Users without this document receive `HTTP 403 Forbidden` and a clear access-denied state on the dashboard.
+1. Registration and sign-in are managed locally via `/api/auth/register` and `/api/auth/login`.
+2. Public registration creates a resident account with `status: 'pending'` to prevent arbitrary village access.
+3. Telemetry read endpoints require an active community membership token (`Authorization: Bearer <token>`).
+4. **Provisioning the First Administrator:**
+   Run the CLI provisioning tool without passing a password on the command line. You will be prompted securely and privately in the console (password input is masked and will not appear in shell history or process listings):
+   ```bash
+   npm run admin:provision -- --email "admin@rampur.in" --name "Panchayat Admin" --villageId "village-rampur-04"
+   ```
+5. **Approving a Registered Resident:**
+   ```bash
+   npm run admin:provision -- --email "resident@rampur.in" --villageId "village-rampur-04" --activate
+   ```
+6. No public bypasses or dummy demo accounts exist; all accounts are hashed and verified with scrypt and JWT.
 
 ---
 
-## 7. Implementation Status & Project Verification Boundary
+## 7. Export, Purge, and Backup Lifecycle for Raw Telemetry
 
-To ensure full transparency between hardware bench testing and end-to-end cloud persistence, the project boundaries are defined as follows:
-
-### What Is Currently Completed:
-- **Local Sensor Wiring & Serial Verification:** Node 1 and Node 2 hardware wiring and basic sensor readings (pulse generation from YF-S201 flow turbines and echo distance from HC-SR04 ultrasonic sensor) have been inspected locally in the Arduino Serial Monitor.
-- **Backend Schema & Ingestion Ready:** Express endpoints (`POST /api/v1/telemetry`, `GET /api/v1/telemetry`), Zod discriminated schemas, node identity matching, and Firestore collection paths (`prototype_node_telemetry`) are prepared and verified via automated test suites.
-- **Dashboard Consumption Ready:** The single existing dashboard (`App.tsx`, `HomeView.tsx`, `TrendsView.tsx`) is prepared to consume measured Node 1 and Node 2 telemetry. When no records exist, it truthfully displays *"Waiting for device"* and *"Waiting for measured sensor history"*.
-- **Security Rules & Indexes:** Deployed to Firebase project `gen-lang-client-0038143503`.
-
-### What Remains to Be Done (Future Steps):
-- **ESP32 Wi-Fi HTTP Transmission:** Wi-Fi packet transmission to the backend has not yet been uploaded or verified on the physical boards.
-- **Backend Service Account Configuration:** Server credentials in `.env.local` must be configured for the backend to persist received packets to live Firestore.
-- **Community Membership Document:** Creation of the authorized membership document in Firestore for the testing user account.
-- **Physical Volume Calibration:** Flow sensor pulse calibration with a measured container (1.00 L) before presenting volume totals.
-- **End-to-End Verification:** Live end-to-end data flow (Node 1/2 ESP32 → local Wi-Fi HTTP POST → Express backend validation → Firestore persistence → dashboard live update) has **not** been tested or claimed.
-
----
-
-## 8. Running the Application
-
-In two separate terminal windows from the repository root:
+After the competition, raw sensor records can be exported and purged without touching user accounts, actions, pledges, or code:
 
 ```bash
-# Terminal 1: Start Express backend (port 5001)
-npm run server:dev
+# Preview records to purge (dry run)
+npm run telemetry:purge -- --all --dry-run
 
-# Terminal 2: Start Vite React frontend (port 3000)
-npm run dev
+# Purge all raw sensor telemetry with confirmation (exports backup first to ./exports/)
+npm run telemetry:purge -- --all --confirm
+
+# Or purge telemetry older than a specific date cutoff
+npm run telemetry:purge -- --cutoff "2026-11-20T00:00:00Z" --confirm
 ```
 
-### Automated Backend Tests & Linting
+### Safe Management and Deletion of Telemetry Backups:
+> **Important:** The JSON backup exported by `telemetry:purge` contains raw measured sensor packets. It remains safely on local disk in `exports/` until you explicitly decide you no longer need it. It is **never** silently deleted.
 
-Verify API validation, node separation, authentication, and error paths in in-memory test mode without touching Firestore:
-
+When you decide the backup file is no longer needed, you can delete it safely using the dedicated cleaner tool:
 ```bash
-# Run automated backend test suite (19 checks)
-npm run test:backend
+# 1. List all existing backup files on disk:
+npm run telemetry:clean-backups -- --list
 
-# Verify TypeScript types
-npm run lint
+# 2. Preview deletion without removing:
+npm run telemetry:clean-backups -- --all --dry-run
 
-# Build client production bundle
-npm run build
+# 3. Delete a specific backup file:
+npm run telemetry:clean-backups -- --file telemetry_export_2026-11-20T...json --confirm
+
+# 4. Delete all backup files in exports/:
+npm run telemetry:clean-backups -- --all --confirm
+
+# Manual terminal alternative:
+ls -la exports/
+rm exports/telemetry_export_*.json
 ```
 
 ---
 
-## 9. Troubleshooting Guide
+## 8. Development Firestore Cleanup Guide (Manual Reference)
 
-| Issue | Likely Cause | Resolution |
-|---|---|---|
-| **HTTP 401 Unauthorized** from ESP32 | Device key mismatch or missing `Authorization: Bearer` header | Check `BHUJAL_DEVICE_API_KEY` in `secrets.h` matches `NODE_1_DEVICE_API_KEY` or `DEVICE_API_KEY` in `.env.local`. |
-| **HTTP 403 Forbidden** on Dashboard | Signed-in user lacks active membership document | Provision `community_memberships/{UID}_{villageId}` in Firestore with `status: "active"`. |
-| **HTTP 503 Storage Unavailable** | Server `.env.local` missing Firebase Admin service account key | Add `FIREBASE_CLIENT_EMAIL` and `FIREBASE_PRIVATE_KEY` to `.env.local` and restart server. |
-| **ESP32 Wi-Fi connect failed** | 5 GHz network or wrong credentials | ESP32-WROOM-32 supports **2.4 GHz only**. Connect to a 2.4 GHz SSID. |
-| **ESP32 HTTP -1 Connection Refused** | Incorrect LAN IP or firewall block | Verify computer LAN IP (`ifconfig` / `ipconfig`). Allow port `5001` inbound in operating system firewall. |
-| **Node 1 packet skipped (Water level echo)** | Ultrasonic sensor not receiving echo | Check TRIG (GPIO 5), ECHO divider (GPIO 34), 5V power, and ensure tank surface is within 2–400 cm. |
-| **Zero pulses / flow rate shows 0.00** | Flow sensor wiring or flow arrow reversed | Confirm water flows in direction of housing arrow. Check sensor signal wiring and common ground. |
-| **Dashboard stuck on loading** | Handled: page initialization is decoupled | Initial page loads even when signed out. Signed-out status is shown on telemetry cards. |
+> **Status Notice:** The previous programmatic Firestore cleanup attempt encountered `8 RESOURCE_EXHAUSTED: Quota limit exceeded` on consumer Google Cloud project `739886188219`. **Zero documents were deleted.** Billing was not enabled to bypass this quota. Old Firestore records were **not** migrated into PostgreSQL; the local PostgreSQL database starts completely empty.
+
+If you wish to manually clear application records from the cloud development database (`ai-studio-b5c8fea1-15ca-479c-80da-b20daf9c036d`):
+
+1. Open [Google Cloud Console / Firebase Console](https://console.firebase.google.com/) for project `ai-studio-b5c8fea1-15ca-479c-80da-b20daf9c036d`.
+2. Go to **Firestore Database** > **Data**.
+3. **Inventory of Application Collections to Clear:**
+   - `prototype_node_telemetry` (Node 1 and Node 2 raw packets)
+   - `prototype_telemetry` (legacy single-node telemetry)
+   - `community_actions` (water conservation activities)
+   - `water_pledges` (household water pledges)
+   - `field_observations` (resident field notes)
+   - `community_memberships` (village residency documents)
+   - `users` (user profile records)
+   - `community_gem_balances` (legacy concept testing balance records)
+   - `gem_accruals` (legacy concept testing audit ledger records)
+4. **Safety Boundaries:**
+   - Delete application documents only inside the collections listed above.
+   - **Do NOT** delete Firebase Authentication users.
+   - **Do NOT** delete Security Rules (`firestore.rules`).
+   - **Do NOT** delete Indexes (`firestore.indexes.json`).
+   - **Do NOT** delete service account credentials or the Firebase project itself.
+   - **Do NOT** enable billing to bypass free-tier quotas.
+
+---
+
+## 8. Remaining ESP32 Physical Verification Steps
+
+Before running the live physical demonstration:
+1. **Upload Firmware to Node 1**: Upload `bhujalsetu_wifi_node.ino` configured with `NODE_ID = "node-1"` and `HAS_WATER_LEVEL = 1`. Verify serial output connects to Wi-Fi.
+2. **Upload Firmware to Node 2**: Upload `bhujalsetu_wifi_node.ino` configured with `NODE_ID = "node-2"` and `HAS_WATER_LEVEL = 0`. Verify serial output connects to Wi-Fi.
+3. **Calibrate YF-S201 Flow Pulses**: Run 1.00 L of water through each sensor and adjust `FLOW_PULSES_PER_LITER` in firmware.
+4. **Calibrate HC-SR04 Tank Usable Height**: Measure inside tank depth and set `TANK_USABLE_HEIGHT_CM`.
+5. **Verify Live POST Reception**: Verify `HTTP 201` received on physical serial monitors when transmitting packets to the Express backend.

@@ -1,15 +1,8 @@
 /**
  * BhujalSetu - Service & API Abstraction Layer
  *
- * Current State: Prototype with typed simulated datasets and optional Firestore synchronization.
- * Future State: Replace mock responses with Node.js/Express backend calls:
- *   - GET  /api/groundwater      -> getGroundwaterStatus()
- *   - GET  /api/water-balance    -> getWaterBalance(period)
- *   - GET  /api/trends?range=30d -> getTrends(range)
- *   - GET  /api/alerts           -> getAlerts()
- *   - GET  /api/actions          -> getRecommendations()
- *   - POST /api/community/action -> submitCommunityAction()
- *   - POST /api/community/pledge -> submitWaterPledge()
+ * All browser communication routes strictly through the Express backend.
+ * PostgreSQL database is accessed only via Express backend routes.
  */
 
 import {
@@ -26,61 +19,150 @@ import {
   PrototypeTelemetry,
   NodePrototypeTelemetry,
   CommunityGemSummary,
+  WaterCreditSummary,
+  WaterCreditLedgerEntry,
 } from '../types/groundwater';
 import {
   INITIAL_RECOMMENDATIONS,
   CURRENT_VILLAGE,
-  AVAILABLE_COMMUNITIES,
   PROTOTYPE_HARDWARE_SPEC,
 } from './mockData';
-import {
-  db,
-  auth,
-  collection,
-  addDoc,
-  getDocs,
-  query,
-  orderBy,
-  limit,
-  where,
-  handleFirestoreError,
-  OperationType,
-} from '../firebase';
 
-// In-memory runtime state for prototype interaction (no fake pre-seeded records)
+// In-memory runtime state for prototype fallback (starts empty)
 let runtimeActions: CommunityActionItem[] = [];
 let runtimePledges: WaterPledgeItem[] = [];
 let runtimeAlerts: Alert[] = [];
 
-// Helper delay to mimic async network response cleanly
-const asyncDelay = (ms: number = 100) => new Promise((resolve) => setTimeout(resolve, ms));
+export type AdviceLevel =
+  | 'NORMAL_USE'
+  | 'CONSERVE_WATER'
+  | 'CRITICAL_CONSERVATION'
+  | 'PREPARE_RECHARGE'
+  | 'WAITING_FOR_DATA';
+
+export interface AiAdvisorEvidence {
+  groundwater: {
+    status: 'UNMEASURED' | 'MEASURED';
+    value: string;
+    source: string;
+    freshness: string;
+    limitationNote: string;
+  };
+  nodeTelemetry: {
+    status: 'measured' | 'waiting_for_devices' | 'incomplete' | 'stale';
+    node1Status?: 'live' | 'stale' | 'missing';
+    node2Status?: 'live' | 'stale' | 'missing';
+    node1Freshness?: string;
+    node2Freshness?: string;
+    rechargeFlowLpm: number | null;
+    rechargeTotalLiters: number | null;
+    extractionFlowLpm: number | null;
+    extractionTotalLiters: number | null;
+    tankLevelCm: number | null;
+    tankDistanceCm: number | null;
+    windowDuration: string;
+    sampleCount: number;
+    averageRechargeFlowLpm: number | null;
+    averageExtractionFlowLpm: number | null;
+    source: string;
+    freshness: string;
+    limitationNote?: string;
+  };
+  weather: {
+    status: 'available' | 'unconfigured' | 'error';
+    source: string;
+    location: string;
+    forecastRainMm: number | null;
+    maxProbabilityPercent: number | null;
+    summary: string;
+    freshness: string;
+    limitationNote?: string;
+  };
+  seasonal: {
+    seasonName: string;
+    calendarPeriod: string;
+    ruleSource: string;
+    guidance: string;
+  };
+  anomaly: {
+    detected: boolean;
+    severity?: 'WATCH' | 'CRITICAL';
+    reason?: string;
+    baselineLpm?: number;
+    measuredLpm?: number;
+    possibleCauses?: string[];
+  };
+}
+
+export interface AiAdvisorData {
+  success: boolean;
+  level: AdviceLevel;
+  headline: string;
+  explanation: string;
+  recommendedAction: string;
+  urgency: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+  evidence: AiAdvisorEvidence;
+  synthesisSource: 'gemini' | 'deterministic_hydrological_rules';
+  dataQualityNote: string;
+  generatedAt: string;
+  nextReviewAt?: string;
+}
+
+export interface ExtractionAnomalyData {
+  nodeId: 'node-2';
+  communityId: string;
+  sensorStatus: 'active' | 'stale' | 'no_data';
+  baselineStatus: 'established' | 'building_baseline' | 'insufficient_samples';
+  sampleCount: number;
+  requiredSamples: number;
+  baselineFlowLpm: number | null;
+  baselineStdDev: number | null;
+  currentFlowLpm: number | null;
+  latestCapturedAt: string | null;
+  timeWindowDescription: string;
+  isAnomaly: boolean;
+  severity?: 'WATCH' | 'CRITICAL';
+  reason?: string;
+  possibleCauses?: string[];
+}
+
+const asyncDelay = (ms: number = 50) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function safeParseJson(res: Response): Promise<any> {
+  try {
+    const text = await res.text();
+    if (!text) return null;
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
 
 export const BhujalSetuApi = {
   async getNodePrototypeTelemetry(villageId: string, limit = 120): Promise<NodePrototypeTelemetry[]> {
-    const idToken = await auth.currentUser?.getIdToken();
-    if (!idToken) throw new Error('Sign in with your approved Firebase account to load node readings.');
+    const token = localStorage.getItem('bhujalsetu_auth_token');
+    if (!token) throw new Error('Sign in with your approved community account to load node readings.');
+
     const params = new URLSearchParams({ villageId, limit: String(limit) });
     const response = await fetch(`/api/v1/telemetry?${params.toString()}`, {
-      headers: { Authorization: `Bearer ${idToken}` },
+      headers: { Authorization: `Bearer ${token}` },
     });
-    let body: any = null;
-    try {
-      body = await response.json();
-    } catch {
-      // Non-JSON response (e.g. gateway timeout or proxy error)
-    }
+
+    const body = await safeParseJson(response);
+
     if (!response.ok) {
       const message = body?.error || (response.status === 503
-        ? 'Backend Firestore storage is unavailable or credentials are not configured.'
+        ? 'Backend PostgreSQL storage is unavailable or database is not connected.'
         : response.status === 403
         ? 'Active community membership is required to access telemetry.'
         : response.status === 401
-        ? 'Sign in with an approved Firebase account to view telemetry.'
+        ? 'Sign in with an approved community account to view telemetry.'
         : `Telemetry request failed with status ${response.status}.`);
       const err = new Error(message);
       (err as any).status = response.status;
       throw err;
     }
+
     if (!body || !Array.isArray(body.records)) throw new Error('The backend returned an invalid sensor history response.');
     return body.records.filter((record: NodePrototypeTelemetry) =>
       (record.nodeId === 'node-1' || record.nodeId === 'node-2') && record.dataSource === 'measured'
@@ -91,45 +173,112 @@ export const BhujalSetuApi = {
     try {
       const params = new URLSearchParams();
       if (villageId) params.set('villageId', villageId);
-      const response = await fetch(`/api/prototype/telemetry/latest${params.toString() ? `?${params.toString()}` : ''}`);
+      const token = localStorage.getItem('bhujalsetu_auth_token');
+      const headers: Record<string, string> = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const response = await fetch(
+        `/api/prototype/telemetry/latest${params.toString() ? `?${params.toString()}` : ''}`,
+        { headers }
+      );
       if (!response.ok) return null;
-      const data = await response.json();
-      if (data.dataSource !== 'measured' && data.dataSource !== 'simulated') return null;
+      const data = await safeParseJson(response);
+      if (!data || (data.dataSource !== 'measured' && data.dataSource !== 'simulated')) return null;
       return data as PrototypeTelemetry;
     } catch {
       return null;
     }
   },
 
-  /**
-   * Fetch current village / aquifer profile
-   */
   async getVillageProfile(villageId?: string): Promise<VillageCommunity> {
-    await asyncDelay(50);
-    if (!villageId) return CURRENT_VILLAGE;
-    const match = AVAILABLE_COMMUNITIES.find((v) => v.id === villageId);
-    return match || CURRENT_VILLAGE;
+    try {
+      const token = localStorage.getItem('bhujalsetu_auth_token');
+      const headers: Record<string, string> = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const params = new URLSearchParams();
+      if (villageId) params.set('villageId', villageId);
+      const res = await fetch(`/api/auth/community${params.toString() ? `?${params.toString()}` : ''}`, { headers });
+      if (res.ok) {
+        const data = await safeParseJson(res);
+        if (data && data.success && data.community) {
+          const c = data.community;
+          return {
+            ...CURRENT_VILLAGE,
+            id: c.id,
+            name: c.name,
+            district: c.district || CURRENT_VILLAGE.district,
+            state: c.state || CURRENT_VILLAGE.state,
+            latitude: c.latitude != null ? Number(c.latitude) : null,
+            longitude: c.longitude != null ? Number(c.longitude) : null,
+          };
+        }
+      }
+    } catch {
+      // Fallback
+    }
+    return CURRENT_VILLAGE;
   },
 
-  /**
-   * Fetch list of available communities
-   */
-  async getAvailableVillages(): Promise<VillageCommunity[]> {
-    await asyncDelay(50);
-    return AVAILABLE_COMMUNITIES;
+  async getAvailableVillages(authorizedVillageId?: string): Promise<VillageCommunity[]> {
+    try {
+      const token = localStorage.getItem('bhujalsetu_auth_token');
+      if (token) {
+        const res = await fetch('/api/auth/authorized-communities', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) {
+          const data = await safeParseJson(res);
+          if (data && data.success && Array.isArray(data.communities) && data.communities.length > 0) {
+            return data.communities;
+          }
+        }
+      }
+
+      // Fallback: look up single registered prototype community profile from server
+      const params = new URLSearchParams();
+      if (authorizedVillageId) params.set('villageId', authorizedVillageId);
+      const resComm = await fetch(`/api/auth/community${params.toString() ? `?${params.toString()}` : ''}`);
+      if (resComm.ok) {
+        const data = await safeParseJson(resComm);
+        if (data && data.success && data.community) {
+          const c = data.community;
+          return [{
+            id: c.id,
+            name: c.name,
+            district: c.district || 'Pune',
+            state: c.state || 'Maharashtra',
+            aquiferType: 'Basaltic Deccan Trap with alluvial pockets',
+            participatingHouseholds: 215,
+            totalBorewellsTracked: 12,
+            activeRechargeStructures: 5,
+            totalRechargedThisSeasonLiters: 980000,
+            latitude: c.latitude != null ? Number(c.latitude) : null,
+            longitude: c.longitude != null ? Number(c.longitude) : null,
+          }];
+        }
+      }
+    } catch {
+      // Fallback
+    }
+
+    if (authorizedVillageId) {
+      return [{
+        ...CURRENT_VILLAGE,
+        id: authorizedVillageId,
+        name: authorizedVillageId === 'village-rampur-04' ? 'Rampur Prototype Village' : authorizedVillageId,
+      }];
+    }
+    return [CURRENT_VILLAGE];
   },
 
-  /**
-   * Fetch current groundwater level, status, and shift
-   * Returns null when no piezometer instrument is installed (tabletop sensor phase)
-   */
   async getGroundwaterStatus(villageId?: string): Promise<GroundwaterReading | null> {
     try {
       const url = villageId ? `/api/groundwater?villageId=${encodeURIComponent(villageId)}` : '/api/groundwater';
       const res = await fetch(url);
       if (res.ok) {
-        const data = await res.json();
-        if (data.depthMeters !== null && data.depthMeters !== undefined) {
+        const data = await safeParseJson(res);
+        if (data && data.depthMeters !== null && data.depthMeters !== undefined) {
           return {
             timestamp: data.timestamp || new Date().toISOString(),
             depthMeters: data.depthMeters,
@@ -147,19 +296,14 @@ export const BhujalSetuApi = {
     return null;
   },
 
-  /**
-   * Fetch prototype water balance from backend for daily, weekly, or monthly
-   * Calls GET /api/water-balance?period=...
-   * Returns honest waiting state when paired measured data is unavailable. No hardcoded or fabricated numbers.
-   */
   async getWaterBalance(period: BalancePeriod = 'daily', villageId?: string): Promise<WaterBalance> {
     try {
       const params = new URLSearchParams({ period });
       if (villageId) params.append('villageId', villageId);
       const res = await fetch(`/api/water-balance?${params.toString()}`);
       if (res.ok) {
-        const data = await res.json();
-        return data as WaterBalance;
+        const data = await safeParseJson(res);
+        if (data) return data as WaterBalance;
       }
     } catch {
       // Backend unavailable; show waiting state
@@ -180,18 +324,15 @@ export const BhujalSetuApi = {
     };
   },
 
-  /**
-   * Fetch community aggregate GEM points balance and auditable accrual ledger
-   * Requires authenticated community membership.
-   */
   async getCommunityGems(villageId: string, idToken?: string): Promise<CommunityGemSummary | null> {
     try {
+      const token = idToken || localStorage.getItem('bhujalsetu_auth_token') || undefined;
       const headers: Record<string, string> = {};
-      if (idToken) headers['Authorization'] = `Bearer ${idToken}`;
+      if (token) headers['Authorization'] = `Bearer ${token}`;
       const res = await fetch(`/api/v1/gems?villageId=${encodeURIComponent(villageId)}`, { headers });
       if (res.ok) {
-        const data = await res.json();
-        if (data.success) {
+        const data = await safeParseJson(res);
+        if (data && data.success) {
           return data as CommunityGemSummary;
         }
       }
@@ -201,226 +342,366 @@ export const BhujalSetuApi = {
     return null;
   },
 
-  /**
-   * Fetch historical trend data series for charts
-   * Calls GET /api/trends?range=... returning real measured history only
-   */
+  async getWaterCreditsSummary(villageId?: string, idToken?: string): Promise<WaterCreditSummary | null> {
+    try {
+      const token = idToken || localStorage.getItem('bhujalsetu_auth_token') || undefined;
+      const headers: Record<string, string> = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      const url = villageId ? `/api/v1/water-credits/summary?villageId=${encodeURIComponent(villageId)}` : '/api/v1/water-credits/summary';
+      const res = await fetch(url, { headers });
+      if (res.ok) {
+        const data = await safeParseJson(res);
+        if (data && data.success) {
+          return data as WaterCreditSummary;
+        }
+      }
+    } catch (err) {
+      console.error('[API] Error fetching water credits summary:', err);
+    }
+    return null;
+  },
+
+  async getWaterCreditsHistory(villageId?: string, limit = 30, idToken?: string): Promise<WaterCreditLedgerEntry[]> {
+    try {
+      const token = idToken || localStorage.getItem('bhujalsetu_auth_token') || undefined;
+      const headers: Record<string, string> = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      const params = new URLSearchParams({ limit: String(limit) });
+      if (villageId) params.append('villageId', villageId);
+      const res = await fetch(`/api/v1/water-credits/history?${params.toString()}`, { headers });
+      if (res.ok) {
+        const data = await safeParseJson(res);
+        if (data && data.success && Array.isArray(data.history)) {
+          return data.history as WaterCreditLedgerEntry[];
+        }
+      }
+    } catch (err) {
+      console.error('[API] Error fetching water credits history:', err);
+    }
+    return [];
+  },
+
+  async triggerDailyWaterCreditsCalculation(targetDate?: string, idToken?: string): Promise<{ success: boolean; entry?: WaterCreditLedgerEntry; error?: string }> {
+    try {
+      const token = idToken || localStorage.getItem('bhujalsetu_auth_token') || undefined;
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      const res = await fetch('/api/v1/water-credits/calculate-daily', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(targetDate ? { targetDate } : {}),
+      });
+      const data = await safeParseJson(res);
+      if (res.ok && data?.success) {
+        return { success: true, entry: data.entry };
+      }
+      return { success: false, error: data?.error || 'Calculation failed' };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Network error' };
+    }
+  },
+
   async getTrends(range: TimeRange = '30d', villageId?: string) {
     try {
       const params = new URLSearchParams({ range });
       if (villageId) params.append('villageId', villageId);
       const res = await fetch(`/api/trends?${params.toString()}`);
       if (res.ok) {
-        const body = await res.json();
-        if (body.data && Array.isArray(body.data)) {
-          return body.data;
+        const data = await safeParseJson(res);
+        if (Array.isArray(data)) {
+          return data;
         }
       }
     } catch {
-      // Backend unavailable
+      // Monitored history only
     }
-    // Never fall back to generated/simulated time series
     return [];
   },
 
-  /**
-   * Fetch active alerts
-   */
-  async getAlerts(): Promise<Alert[]> {
+  async getAlerts(villageId?: string): Promise<Alert[]> {
     try {
-      const res = await fetch('/api/alerts');
+      const token = localStorage.getItem('bhujalsetu_auth_token');
+      if (!token) return [];
+      const headers: Record<string, string> = {
+        Authorization: `Bearer ${token}`,
+      };
+      const res = await fetch('/api/alerts', { headers });
       if (res.ok) {
-        const remoteAlerts = await res.json();
-        if (Array.isArray(remoteAlerts)) {
-          return remoteAlerts;
+        const data = await safeParseJson(res);
+        if (Array.isArray(data)) {
+          return data as Alert[];
         }
       }
     } catch {
       // Fallback
     }
-    await asyncDelay(40);
-    return [...runtimeAlerts];
+    return [];
   },
 
-  /**
-   * Dismiss an alert locally
-   */
   async dismissAlert(alertId: string): Promise<void> {
     runtimeAlerts = runtimeAlerts.filter((a) => a.id !== alertId);
   },
 
-  /**
-   * Fetch rule-based action recommendations
-   */
   async getRecommendations(): Promise<ActionRecommendation[]> {
     try {
       const res = await fetch('/api/actions');
       if (res.ok) {
-        const remoteRecs = await res.json();
-        if (Array.isArray(remoteRecs) && remoteRecs.length > 0) {
-          return remoteRecs;
+        const data = await safeParseJson(res);
+        if (Array.isArray(data)) {
+          return data as ActionRecommendation[];
         }
       }
     } catch {
       // Fallback
     }
-    await asyncDelay(40);
-    return [...INITIAL_RECOMMENDATIONS];
+    return INITIAL_RECOMMENDATIONS;
   },
 
-  /**
-   * Request groundwater intelligence advice from Google Gemini AI advisor
-   */
-  async getAiGroundwaterAdvice(input: Record<string, unknown>) {
+  async getAiAdvisor(villageId?: string): Promise<AiAdvisorData> {
     try {
-      const res = await fetch('/api/ai/advice', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(input),
-      });
+      const token = localStorage.getItem('bhujalsetu_auth_token');
+      const headers: Record<string, string> = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const res = await fetch('/api/ai/advice', { headers });
       if (res.ok) {
-        return await res.json();
+        const data = await safeParseJson(res);
+        if (data && data.level) {
+          return data as AiAdvisorData;
+        }
       }
     } catch (err) {
-      console.warn('AI advisor service unreachable:', err);
+      console.warn('AI advisor endpoint failed; fallback guidance displayed.', err);
     }
+
     return {
-      success: true,
-      source: 'general_guidance',
-      advisory: 'Advisory guidance: Live sensor telemetry is not connected. Prioritize seasonal recharge structure maintenance and voluntary water budgeting.',
-      recommendedAction: 'Inspect local percolation pits and maintain community water log.',
+      success: false,
+      level: 'WAITING_FOR_DATA',
+      headline: 'Awaiting Hardware Telemetry or Backend Connection',
+      explanation: 'Both Node 1 and Node 2 must stream authenticated measured packets to evaluate community groundwater intelligence. No simulated or fabricated numbers are displayed.',
+      recommendedAction: 'Connect ESP32 hardware nodes and verify active backend session.',
+      urgency: 'LOW',
+      evidence: {
+        groundwater: {
+          status: 'UNMEASURED',
+          value: 'Piezometer Offline',
+          source: 'Borewell Piezometers',
+          freshness: 'N/A',
+          limitationNote: 'Tabletop ultrasonic sensor measures bench tank level, not deep groundwater.',
+        },
+        nodeTelemetry: {
+          status: 'waiting_for_devices',
+          rechargeFlowLpm: null,
+          rechargeTotalLiters: null,
+          extractionFlowLpm: null,
+          extractionTotalLiters: null,
+          tankLevelCm: null,
+          tankDistanceCm: null,
+          windowDuration: 'No packets',
+          sampleCount: 0,
+          averageRechargeFlowLpm: null,
+          averageExtractionFlowLpm: null,
+          source: 'ESP32 Nodes',
+          freshness: 'N/A',
+        },
+        weather: {
+          status: 'unconfigured',
+          source: 'Open-Meteo Weather API',
+          location: 'Community Location',
+          forecastRainMm: null,
+          maxProbabilityPercent: null,
+          summary: 'Weather forecast awaiting backend synchronization',
+          freshness: 'N/A',
+        },
+        seasonal: {
+          seasonName: 'Current Season',
+          calendarPeriod: 'Annual cycle',
+          ruleSource: 'IMD rules',
+          guidance: 'Standard rotational water management',
+        },
+        anomaly: {
+          detected: false,
+        },
+      },
+      synthesisSource: 'deterministic_hydrological_rules',
+      dataQualityNote: 'Tabletop prototype sensors measure bench flow and tank level only.',
+      generatedAt: new Date().toISOString(),
     };
   },
 
-  /**
-   * Fetch community actions list. Tries Firestore first if user is logged in,
-   * otherwise returns session-submitted local actions (no seeded fake actions).
-   */
-  async getCommunityActions(communityId: string): Promise<CommunityActionItem[]> {
-    if (auth.currentUser && !auth.currentUser.isAnonymous) {
-      try {
-        const q = query(
-          collection(db, 'community_actions'),
-          where('communityId', '==', communityId),
-          orderBy('createdAt', 'desc'),
-          limit(20)
-        );
-        const snapshot = await getDocs(q);
-        if (!snapshot.empty) {
-          const remoteActions: CommunityActionItem[] = snapshot.docs.map((docSnap) => {
-            const data = docSnap.data();
-            return {
-              id: docSnap.id,
-              communityId: data.communityId,
-              userId: data.userId || 'anonymous',
-              userName: data.userName || 'Community Member',
-              userEmail: data.userEmail,
-              actionType: data.actionType || 'recharge_pit_clearing',
-              title: data.title || 'Community Action',
-              description: data.description || '',
-              ward: data.ward || 'General Ward',
-              impactLiters: data.impactLiters || 0,
-              status: data.status || 'completed',
-              createdAt: data.createdAt || new Date().toISOString(),
-            };
-          });
-          return remoteActions;
-        }
-        return [];
-      } catch (err) {
-        console.warn('Could not load community actions from Firestore:', err);
+  async getAiGroundwaterAdvice(villageId?: string, question?: string): Promise<{
+    headline: string;
+    analysis: string;
+    advisory: string;
+    recommendedAction: string;
+    source?: string;
+  }> {
+    const advisor = await this.getAiAdvisor(villageId);
+    return {
+      headline: advisor.headline,
+      analysis: advisor.explanation,
+      advisory: advisor.explanation,
+      recommendedAction: advisor.recommendedAction,
+      source: advisor.synthesisSource,
+    };
+  },
+
+  async getExtractionAnomaly(villageId?: string): Promise<ExtractionAnomalyData | null> {
+    try {
+      const token = localStorage.getItem('bhujalsetu_auth_token');
+      const headers: Record<string, string> = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const res = await fetch('/api/telemetry/extraction-anomaly', { headers });
+      if (res.ok) {
+        return await safeParseJson(res);
       }
+    } catch (err) {
+      console.warn('Extraction anomaly check failed:', err);
     }
-    // Return only actions submitted during this session
+    return null;
+  },
+
+  async getCommunityActions(communityId: string): Promise<CommunityActionItem[]> {
+    try {
+      const token = localStorage.getItem('bhujalsetu_auth_token');
+      const headers: Record<string, string> = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const res = await fetch(`/api/community/actions?villageId=${encodeURIComponent(communityId)}`, { headers });
+      if (res.ok) {
+        const data = await safeParseJson(res);
+        if (data && data.success && Array.isArray(data.actions)) {
+          return data.actions;
+        }
+      }
+    } catch (err) {
+      console.warn('Could not load community actions from PostgreSQL backend:', err);
+    }
     return runtimeActions.filter((action) => action.communityId === communityId);
   },
 
-  /**
-   * Submit a new community action
-   */
   async submitCommunityAction(action: Omit<CommunityActionItem, 'id' | 'createdAt'>): Promise<CommunityActionItem> {
+    const token = localStorage.getItem('bhujalsetu_auth_token');
+    try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const res = await fetch('/api/community/actions', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(action),
+      });
+
+      if (res.ok) {
+        const data = await safeParseJson(res);
+        if (data && data.success && data.action) {
+          runtimeActions.unshift(data.action);
+          return data.action;
+        }
+      }
+    } catch (error) {
+      console.warn('Could not persist to PostgreSQL backend, stored in local runtime state:', error);
+    }
+
     const newAction: CommunityActionItem = {
       ...action,
       id: `act-${Date.now()}`,
       createdAt: new Date().toISOString(),
     };
-
-    // If signed into Firebase, attempt Firestore persistence
-    if (auth.currentUser) {
-      try {
-        const docRef = await addDoc(collection(db, 'community_actions'), {
-          ...newAction,
-          userId: auth.currentUser.uid,
-          userName: action.userName || auth.currentUser.displayName || 'Community Member',
-          userEmail: auth.currentUser.email || '',
-        });
-        newAction.id = docRef.id;
-      } catch (error) {
-        console.warn('Could not persist to Firestore, stored in local runtime state:', error);
-      }
-    }
-
     runtimeActions.unshift(newAction);
     return newAction;
   },
 
-  /**
-   * Fetch household water pledges from Firestore only (no seeded fake pledges).
-   */
   async getWaterPledges(communityId: string): Promise<WaterPledgeItem[]> {
-    if (auth.currentUser && !auth.currentUser.isAnonymous) {
-      try {
-        const q = query(
-          collection(db, 'water_pledges'),
-          where('communityId', '==', communityId),
-          orderBy('createdAt', 'desc'),
-          limit(50)
-        );
-        const snapshot = await getDocs(q);
-        if (!snapshot.empty) {
-          return snapshot.docs.map((docSnap) => ({ ...docSnap.data(), id: docSnap.id } as WaterPledgeItem));
+    try {
+      const token = localStorage.getItem('bhujalsetu_auth_token');
+      const headers: Record<string, string> = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const res = await fetch(`/api/community/pledges?villageId=${encodeURIComponent(communityId)}`, { headers });
+      if (res.ok) {
+        const data = await safeParseJson(res);
+        if (data && data.success && Array.isArray(data.pledges)) {
+          return data.pledges;
         }
-        return [];
-      } catch (error) {
-        console.warn('Could not load member-scoped water pledges from Firestore:', error);
       }
+    } catch (error) {
+      console.warn('Could not load water pledges from PostgreSQL backend:', error);
     }
-    await asyncDelay(50);
-    // Return only pledges submitted during this session
     return runtimePledges.filter((pledge) => pledge.communityId === communityId);
   },
 
-  /**
-   * Submit a household water pledge
-   */
   async submitWaterPledge(pledge: Omit<WaterPledgeItem, 'id' | 'createdAt'>): Promise<WaterPledgeItem> {
+    const token = localStorage.getItem('bhujalsetu_auth_token');
+    try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const res = await fetch('/api/community/pledges', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(pledge),
+      });
+
+      if (res.ok) {
+        const data = await safeParseJson(res);
+        if (data && data.success && data.pledge) {
+          runtimePledges.unshift(data.pledge);
+          return data.pledge;
+        }
+      }
+    } catch (error) {
+      console.warn('Could not persist pledge to PostgreSQL backend:', error);
+    }
+
     const newPledge: WaterPledgeItem = {
       ...pledge,
       id: `pledge-${Date.now()}`,
       createdAt: new Date().toISOString(),
     };
-
-    if (auth.currentUser) {
-      try {
-        const docRef = await addDoc(collection(db, 'water_pledges'), {
-          ...newPledge,
-          userId: auth.currentUser.uid,
-        });
-        newPledge.id = docRef.id;
-      } catch (error) {
-        console.warn('Could not persist pledge to Firestore:', error);
-      }
-    }
-
     runtimePledges.unshift(newPledge);
     return newPledge;
   },
 
-  /**
-   * Fetch hardware specification and ESP32 IoT blueprint data
-   */
+  async updateCommunityLocation(latitude: number | null, longitude: number | null): Promise<any> {
+    const token = localStorage.getItem('bhujalsetu_auth_token');
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    const res = await fetch('/api/auth/community/location', {
+      method: 'PATCH',
+      headers,
+      body: JSON.stringify({ latitude, longitude }),
+    });
+    const data = await safeParseJson(res);
+    if (!res.ok) {
+      throw new Error(data?.error || `Failed to update community location (${res.status}).`);
+    }
+    return data;
+  },
+
+  async updateCommunityName(name: string): Promise<any> {
+    const token = localStorage.getItem('bhujalsetu_auth_token');
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    const res = await fetch('/api/auth/community/name', {
+      method: 'PATCH',
+      headers,
+      body: JSON.stringify({ name }),
+    });
+    const data = await safeParseJson(res);
+    if (!res.ok) {
+      throw new Error(data?.error || `Failed to update community name (${res.status}).`);
+    }
+    return data;
+  },
+
   async getHardwareSpec(): Promise<HardwareSensorSpec> {
-    await asyncDelay(30);
+    await asyncDelay(20);
     return { ...PROTOTYPE_HARDWARE_SPEC };
   },
 };

@@ -68,15 +68,16 @@ export const HomeView: React.FC<HomeViewProps> = ({
   const latestNode = (nodeId: NodePrototypeTelemetry['nodeId']) =>
     nodeTelemetry
       .filter((record) => record.nodeId === nodeId)
-      .sort((a, b) => b.capturedAt.localeCompare(a.capturedAt))[0];
+      .sort((a, b) => new Date(b.receivedAt || b.capturedAt).getTime() - new Date(a.receivedAt || a.capturedAt).getTime())[0];
 
   const node1Latest = latestNode('node-1');
   const node2Latest = latestNode('node-2');
 
   const isStale = (record?: NodePrototypeTelemetry) => {
     if (!record) return false;
-    const ageMs = Date.now() - new Date(record.receivedAt).getTime();
-    return ageMs > 30000;
+    const packetTime = new Date(record.receivedAt || record.capturedAt).getTime();
+    const ageMs = Date.now() - packetTime;
+    return ageMs > 45000;
   };
 
   const flowChartData = [...nodeTelemetry]
@@ -175,7 +176,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
               <div>
                 <strong className="font-bold text-[#1E2A28] block">Sign-in Required for Live Telemetry</strong>
                 <p className="text-[#1E2A28]/70 mt-0.5">
-                  Sign in with your approved Firebase account to read live prototype readings for <span className="font-semibold text-[#1E2A28]">{village.name}</span>. Telemetry access is restricted to verified community members.
+                  Sign in with your approved community account to read live prototype readings for <span className="font-semibold text-[#1E2A28]">{village.name}</span>. Telemetry access is restricted to verified community members.
                 </p>
               </div>
             </div>
@@ -192,7 +193,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
               <div>
                 <strong className="font-bold text-[#B74A3B] block">Access Denied: Community Membership Required</strong>
                 <p className="text-[#1E2A28]/80 mt-0.5">
-                  You are signed in, but your account does not have confirmed active membership in <span className="font-semibold text-[#1E2A28]">{village.name}</span>. Telemetry history is strictly scoped to verified community members in Firestore (<code className="bg-[#B74A3B]/10 px-1 py-0.5 rounded text-[11px]">community_memberships/[uid]_{village.id}</code>).
+                  You are signed in, but your account does not have confirmed active membership in <span className="font-semibold text-[#1E2A28]">{village.name}</span>. Telemetry history is strictly scoped to verified community members in PostgreSQL (community_memberships table).
                 </p>
               </div>
             </div>
@@ -209,7 +210,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
               <div>
                 <strong className="font-bold text-[#B74A3B] block">Backend Telemetry Service Unavailable</strong>
                 <p className="text-[#1E2A28]/80 mt-0.5">
-                  {telemetryError || 'Unable to load sensor records from backend service.'} If Firestore Admin credentials are not yet configured on the server, live telemetry persistence returns HTTP 503.
+                  {telemetryError || 'Unable to load sensor records from backend service.'} If the PostgreSQL database service is unreachable or credentials are not configured, telemetry persistence returns HTTP 503.
                 </p>
               </div>
             </div>
@@ -258,6 +259,44 @@ export const HomeView: React.FC<HomeViewProps> = ({
             )}
           </div>
         )}
+
+        {/* Active Extraction Anomaly or Critical Hardware Alert Banner */}
+        {alerts.filter((a) => !a.isDismissed && a.id.includes('anomaly')).map((anomalyAlert) => (
+          <div
+            key={anomalyAlert.id}
+            className="mt-3 p-4 rounded-xl bg-[#B74A3B]/15 border border-[#B74A3B]/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-[#1E2A28]"
+          >
+            <div className="flex items-start space-x-3">
+              <ShieldAlert className="w-5 h-5 text-[#B74A3B] flex-shrink-0 mt-0.5" />
+              <div>
+                <strong className="font-bold text-[#B74A3B] text-sm block">
+                  {anomalyAlert.title}
+                </strong>
+                <p className="text-[#1E2A28]/90 mt-1">
+                  {anomalyAlert.message}
+                </p>
+                <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-[#1E2A28]/80 font-medium">
+                  <span className="bg-[#B74A3B]/10 px-2 py-0.5 rounded border border-[#B74A3B]/20">
+                    Measured Rate: <strong>{anomalyAlert.actualValue}</strong>
+                  </span>
+                  <span className="bg-[#D8D2C4] px-2 py-0.5 rounded">
+                    Threshold: <strong>{anomalyAlert.thresholdValue}</strong>
+                  </span>
+                  <span className="text-[#1E2A28]/60">
+                    Timestamp: {anomalyAlert.timestamp}
+                  </span>
+                </div>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => onNavigate('actions')}
+              className="px-3.5 py-1.5 rounded-lg bg-[#B74A3B] hover:bg-[#9E3E31] text-white font-bold text-xs self-start sm:self-center transition-colors flex-shrink-0"
+            >
+              Open AI Advisor →
+            </button>
+          </div>
+        ))}
       </section>
 
       {/* 4 Authentic Tabletop Prototype Metric Cards */}
@@ -663,7 +702,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
         </div>
 
         <p className="pt-3 text-[10px] text-[#1E2A28]/55">
-          These charts use authenticated telemetry history stored in Firestore for {village.name}. They reflect tabletop sensor measurements only and do not alter separate community aquifer records.
+          These charts use authenticated telemetry history stored in PostgreSQL for {village.name}. They reflect tabletop sensor measurements only and do not alter separate community aquifer records.
         </p>
       </section>
 

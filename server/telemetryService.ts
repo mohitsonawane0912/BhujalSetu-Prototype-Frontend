@@ -1,9 +1,26 @@
-import { TelemetryRepository, TelemetryRecord } from './firebaseAdmin';
 import { ValidatedTelemetry } from './telemetryValidator';
 import { NodeTelemetryRepository } from './nodeTelemetryRepository';
 
 export const FLOW_PULSES_PER_LITER = 450.0;
 export const WINDOW_DURATION_MS = 60_000; // 60-second aligned time window
+
+export interface TelemetryRecord {
+  id: string;
+  deviceId: string;
+  villageId: string;
+  timestamp: string;
+  dataSource: 'measured' | 'simulated';
+  tankLevelPercent: number;
+  tankDistanceCm: number;
+  flowInLpm: number;
+  flowOutLpm: number;
+  flowInLitersTotal: number;
+  flowOutLitersTotal: number;
+  pumpEnabled: boolean;
+  receivedAt: string;
+}
+
+const legacyTelemetryStore: TelemetryRecord[] = [];
 
 export interface BackendGroundwaterStatus {
   timestamp: string;
@@ -43,22 +60,34 @@ export interface BackendWaterBalance {
 }
 
 export const TelemetryService = {
+  clearLegacyStore(): void {
+    legacyTelemetryStore.length = 0;
+  },
+
   async processIncomingTelemetry(input: ValidatedTelemetry): Promise<{
     record: TelemetryRecord;
     alertsTriggered: string[];
   }> {
-    const record = await TelemetryRepository.saveTelemetry({
+    const id = `legacy_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    const record: TelemetryRecord = {
       ...input,
+      id,
       timestamp: input.timestamp || new Date().toISOString(),
       receivedAt: new Date().toISOString(),
-    });
+    };
+    legacyTelemetryStore.unshift(record);
+
     const alertsTriggered: string[] = [];
     if (input.tankLevelPercent <= 10) alertsTriggered.push('Prototype tank level is at or below 10%.');
     return { record, alertsTriggered };
   },
 
   async getLatestPrototypeTelemetry(villageId?: string): Promise<TelemetryRecord | null> {
-    return TelemetryRepository.getLatestPrototypeTelemetry(villageId);
+    if (villageId) {
+      const match = legacyTelemetryStore.find((r) => r.villageId === villageId);
+      if (match) return match;
+    }
+    return legacyTelemetryStore[0] || null;
   },
 
   async getGroundwaterStatus(_villageId?: string): Promise<BackendGroundwaterStatus> {

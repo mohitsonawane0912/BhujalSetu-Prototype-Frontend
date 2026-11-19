@@ -16,6 +16,7 @@ import { TrendsView } from './components/TrendsView';
 import { ActionsView } from './components/ActionsView';
 import { CommunityView } from './components/CommunityView';
 import { HardwareModal } from './components/HardwareModal';
+import { WelcomeView } from './components/WelcomeView';
 import {
   GroundwaterReading,
   WaterBalance,
@@ -31,13 +32,14 @@ import {
   TelemetryConnectionStatus,
 } from './types/groundwater';
 import { BhujalSetuApi } from './services/api';
-import { auth } from './firebase';
 import { Droplets } from 'lucide-react';
 
 function deriveHardwareAlerts(records: NodePrototypeTelemetry[]): Alert[] {
   const alerts: Alert[] = [];
   const latestNode = (nodeId: NodePrototypeTelemetry['nodeId']) =>
-    records.filter((r) => r.nodeId === nodeId).sort((a, b) => b.capturedAt.localeCompare(a.capturedAt))[0];
+    records
+      .filter((r) => r.nodeId === nodeId)
+      .sort((a, b) => new Date(b.receivedAt || b.capturedAt).getTime() - new Date(a.receivedAt || a.capturedAt).getTime())[0];
 
   const n1 = latestNode('node-1');
   const n2 = latestNode('node-2');
@@ -55,16 +57,16 @@ function deriveHardwareAlerts(records: NodePrototypeTelemetry[]): Alert[] {
     });
   }
 
-  const isStale = (r?: NodePrototypeTelemetry) => r && Date.now() - new Date(r.receivedAt).getTime() > 30000;
+  const isStale = (r?: NodePrototypeTelemetry) => r && Date.now() - new Date(r.receivedAt || r.capturedAt).getTime() > 45000;
   if (n1 && isStale(n1)) {
     alerts.push({
       id: 'alert-node1-stale',
       severity: 'WATCH',
-      title: 'Node 1 Telemetry Stale (>30s)',
-      message: 'Node 1 (Recharge line) has not sent a packet in over 30 seconds.',
+      title: 'Node 1 Telemetry Stale (>45s)',
+      message: 'Node 1 (Recharge line) has not sent a packet in over 45 seconds.',
       triggerMetric: 'Node 1 Packet Heartbeat',
-      thresholdValue: '< 30s',
-      actualValue: '> 30s',
+      thresholdValue: '< 45s',
+      actualValue: '> 45s',
       timestamp: new Date(n1.capturedAt).toLocaleTimeString(),
     });
   }
@@ -72,11 +74,11 @@ function deriveHardwareAlerts(records: NodePrototypeTelemetry[]): Alert[] {
     alerts.push({
       id: 'alert-node2-stale',
       severity: 'WATCH',
-      title: 'Node 2 Telemetry Stale (>30s)',
-      message: 'Node 2 (Extraction line) has not sent a packet in over 30 seconds.',
+      title: 'Node 2 Telemetry Stale (>45s)',
+      message: 'Node 2 (Extraction line) has not sent a packet in over 45 seconds.',
       triggerMetric: 'Node 2 Packet Heartbeat',
-      thresholdValue: '< 30s',
-      actualValue: '> 30s',
+      thresholdValue: '< 45s',
+      actualValue: '> 45s',
       timestamp: new Date(n2.capturedAt).toLocaleTimeString(),
     });
   }
@@ -93,7 +95,7 @@ export default function App() {
 }
 
 function BhujalSetuDashboard() {
-  const { user, loading: authLoading } = useAuth();
+  const { user, membershipStatus, loading: authLoading, refreshAuth } = useAuth();
   const [activeTab, setActiveTab] = useState<TabType>('home');
   const [village, setVillage] = useState<VillageCommunity | null>(null);
   const [availableVillages, setAvailableVillages] = useState<VillageCommunity[]>([]);
@@ -119,11 +121,12 @@ function BhujalSetuDashboard() {
 
   // Step 1: Initial page load (loads community baseline, profiles, alerts, etc.)
   // CRITICAL: Does NOT include authenticated telemetry request in this Promise.all.
-  // This guarantees the dashboard renders even if Firebase Auth is not yet restored or visitor is signed out.
+  // This guarantees the dashboard renders even if local auth is not yet restored or visitor is signed out.
   useEffect(() => {
     let isMounted = true;
     async function loadInitialData() {
       try {
+        const authorizedCommunityId = user?.communityId;
         const [
           vProfile,
           vList,
@@ -133,11 +136,11 @@ function BhujalSetuDashboard() {
           recList,
           hSpec,
         ] = await Promise.all([
-          BhujalSetuApi.getVillageProfile(),
-          BhujalSetuApi.getAvailableVillages(),
-          BhujalSetuApi.getGroundwaterStatus(),
-          BhujalSetuApi.getWaterBalance('daily'),
-          BhujalSetuApi.getAlerts(),
+          BhujalSetuApi.getVillageProfile(authorizedCommunityId),
+          BhujalSetuApi.getAvailableVillages(authorizedCommunityId),
+          BhujalSetuApi.getGroundwaterStatus(authorizedCommunityId),
+          BhujalSetuApi.getWaterBalance('daily', authorizedCommunityId),
+          BhujalSetuApi.getAlerts(authorizedCommunityId),
           BhujalSetuApi.getRecommendations(),
           BhujalSetuApi.getHardwareSpec(),
         ]);
@@ -148,7 +151,10 @@ function BhujalSetuDashboard() {
         ]);
 
         if (isMounted) {
-          setVillage(vProfile);
+          const selectedCommunity = (vList.length > 0 && authorizedCommunityId)
+            ? (vList.find((v) => v.id === authorizedCommunityId) || vList[0])
+            : vProfile;
+          setVillage(selectedCommunity);
           setAvailableVillages(vList);
           setReading(gwReading);
           setWaterBalance(wBalance);
@@ -171,6 +177,22 @@ function BhujalSetuDashboard() {
     };
   }, []);
 
+  // Update available villages whenever authenticated user's community resolves
+  useEffect(() => {
+    if (!user?.communityId) return;
+    let isMounted = true;
+    BhujalSetuApi.getAvailableVillages(user.communityId).then((vList) => {
+      if (isMounted && vList.length > 0) {
+        setAvailableVillages(vList);
+        const match = vList.find((v) => v.id === user.communityId) || vList[0];
+        setVillage(match);
+      }
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, [user?.communityId]);
+
   // Step 2: Independent telemetry lifecycle with error handling and concurrency guards
   useEffect(() => {
     let isMounted = true;
@@ -179,7 +201,7 @@ function BhujalSetuDashboard() {
 
     if (!currentVillageId) return;
 
-    // While Firebase Auth is still resolving on initial launch, keep loading indicator
+    // While local auth is still resolving on initial launch, keep loading indicator
     if (authLoading) {
       setTelemetryStatus('loading');
       return;
@@ -189,15 +211,7 @@ function BhujalSetuDashboard() {
     if (!user) {
       setNodeTelemetry([]);
       setTelemetryStatus('signed-out');
-      setTelemetryError('Sign in with your approved Firebase account to view live node telemetry.');
-      return;
-    }
-
-    // Local demo accounts do not have a Firebase Auth token or Firestore membership
-    if (user.isDemo) {
-      setNodeTelemetry([]);
-      setTelemetryStatus('unauthorized');
-      setTelemetryError('Demo profiles cannot access live telemetry. Sign in with an approved Google account provisioned in Firestore community_memberships.');
+      setTelemetryError('Sign in with your approved community account to view live node telemetry.');
       return;
     }
 
@@ -210,16 +224,28 @@ function BhujalSetuDashboard() {
       }
 
       try {
-        const [records, updatedBalance] = await Promise.all([
+        const [records, updatedBalance, anomalyData] = await Promise.all([
           BhujalSetuApi.getNodePrototypeTelemetry(currentVillageId),
           BhujalSetuApi.getWaterBalance(balancePeriod, currentVillageId).catch(() => null),
+          BhujalSetuApi.getExtractionAnomaly(currentVillageId).catch(() => null),
         ]);
         // Prevent race conditions: ensure response belongs to currently selected village
         if (isMounted && currentVillageId === village?.id) {
           setNodeTelemetry(records);
           if (updatedBalance) setWaterBalance(updatedBalance);
           setTelemetryStatus(records.length > 0 ? 'ready' : 'no-data');
-          setAlerts(deriveHardwareAlerts(records));
+
+          const baseAlerts = deriveHardwareAlerts(records);
+          // Backend AnomalyDetector is the single source of truth for extraction anomaly alerts.
+          // Keep displaying an alert whenever backend reports alert.status === 'ACTIVE',
+          // including recovery periods before the second distinct normal packet arrives.
+          if (anomalyData && (anomalyData as any).alert && (anomalyData as any).alert.status === 'ACTIVE') {
+            const backendAlert = (anomalyData as any).alert;
+            if (!baseAlerts.some((a) => a.id === backendAlert.id)) {
+              baseAlerts.push(backendAlert);
+            }
+          }
+          setAlerts(baseAlerts);
           setTelemetryError(null);
           setLastTelemetryFetch(new Date());
         }
@@ -231,7 +257,7 @@ function BhujalSetuDashboard() {
           if (status === 403 || msg.includes('membership') || msg.includes('Active community membership is required')) {
             setTelemetryStatus('unauthorized');
             setNodeTelemetry([]);
-          } else if (status === 503 || msg.includes('Firestore') || msg.includes('credentials') || msg.includes('unavailable')) {
+          } else if (status === 503 || msg.includes('PostgreSQL') || msg.includes('database') || msg.includes('unavailable')) {
             setTelemetryStatus('backend-error');
           } else if (status === 401 || msg.includes('Sign in')) {
             setTelemetryStatus('signed-out');
@@ -265,6 +291,12 @@ function BhujalSetuDashboard() {
   };
 
   const handleSelectVillage = async (selected: VillageCommunity) => {
+    // Only allow selecting verified authorized communities
+    if (availableVillages.length > 0 && !availableVillages.some((v) => v.id === selected.id)) {
+      console.warn(`[Security] Blocked selection of unauthorized community: ${selected.id}`);
+      return;
+    }
+
     // Immediately set village and reset telemetry state to avoid showing stale data from the previous community
     setVillage(selected);
     setNodeTelemetry([]);
@@ -301,7 +333,14 @@ function BhujalSetuDashboard() {
     setWaterPledges((prev) => [created, ...prev]);
   };
 
-  if (isLoading || !village || !hardwareSpec) {
+  const handleVillageUpdate = (updatedVillage: VillageCommunity) => {
+    setVillage(updatedVillage);
+    setAvailableVillages((prev) =>
+      prev.map((v) => (v.id === updatedVillage.id ? updatedVillage : v))
+    );
+  };
+
+  if (authLoading || isLoading || !village || !hardwareSpec) {
     return (
       <div className="min-h-screen bg-[#F5F1E8] flex flex-col items-center justify-center p-4">
         <div className="w-12 h-12 rounded-xl bg-[#1F5A48] flex items-center justify-center text-[#F5F1E8] mb-4 animate-pulse">
@@ -313,6 +352,11 @@ function BhujalSetuDashboard() {
         </p>
       </div>
     );
+  }
+
+  // If signed out or membership is pending hardware verification, route to Welcome / Setup flow
+  if (!user || membershipStatus === 'pending') {
+    return <WelcomeView onActivated={refreshAuth} />;
   }
 
   const openActionCount = recommendations.filter((r) => r.status !== 'COMPLETED').length;
@@ -360,6 +404,7 @@ function BhujalSetuDashboard() {
             currentBalance={waterBalance}
             selectedPeriod={balancePeriod}
             onPeriodChange={handlePeriodChange}
+            villageId={village.id}
           />
         )}
 
@@ -387,6 +432,7 @@ function BhujalSetuDashboard() {
             actions={communityActions}
             pledges={waterPledges}
             onAddPledge={handleAddWaterPledge}
+            onVillageUpdate={handleVillageUpdate}
           />
         )}
       </main>

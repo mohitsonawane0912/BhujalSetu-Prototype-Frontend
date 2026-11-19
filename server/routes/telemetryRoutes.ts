@@ -54,11 +54,11 @@ router.post('/telemetry', requireDeviceAuth, async (req: Request, res: Response)
   } catch (error) {
     console.error('[API] Error processing telemetry:', error);
     const msg = error instanceof Error ? error.message : String(error);
-    const statusCode = msg.includes('Firestore') ? 503 : 500;
+    const statusCode = msg.includes('PostgreSQL') || msg.includes('database') ? 503 : 500;
     res.status(statusCode).json({
       success: false,
-      error: msg.includes('Firestore')
-        ? 'Firestore storage is unavailable or credentials are not configured; sample was not accepted.'
+      error: msg.includes('PostgreSQL') || msg.includes('database')
+        ? 'PostgreSQL database storage is unavailable; sample was not accepted.'
         : 'Internal server error processing telemetry',
       message: msg,
     });

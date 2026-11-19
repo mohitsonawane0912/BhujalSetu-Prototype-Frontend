@@ -3,6 +3,8 @@ import { config } from './config';
 import telemetryRoutes from './routes/telemetryRoutes';
 import nodeTelemetryRoutes from './routes/nodeTelemetryRoutes';
 import dashboardRoutes from './routes/dashboardRoutes';
+import authRoutes from './routes/authRoutes';
+import waterCreditsRoutes from './routes/waterCreditsRoutes';
 
 const app = express();
 
@@ -36,9 +38,11 @@ app.use((req: Request, _res: Response, next: NextFunction) => {
 });
 
 // API Routes
+app.use('/api/auth', authRoutes);
 app.use('/api', telemetryRoutes);
 app.use('/api', nodeTelemetryRoutes);
 app.use('/api', dashboardRoutes);
+app.use('/api', waterCreditsRoutes);
 
 // Root fallback
 app.get('/', (_req: Request, res: Response) => {
@@ -82,16 +86,31 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
 });
 
 import { fileURLToPath } from 'url';
+import { checkConnection } from './db/postgres';
 
 // Start listening if running directly
 const isMain = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
 if (isMain && process.env.NODE_ENV !== 'test') {
-  app.listen(config.port, '0.0.0.0', () => {
+  app.listen(config.port, '0.0.0.0', async () => {
     console.log(`=======================================================`);
     console.log(`BhujalSetu Node.js/Express Backend running on port ${config.port}`);
     console.log(`Bound to:        0.0.0.0 (Accessible to local network devices)`);
     console.log(`Health endpoint: http://localhost:${config.port}/api/health`);
-    console.log(`Telemetry URL:   http://localhost:${config.port}/api/telemetry`);
+    console.log(`Telemetry URL:   http://localhost:${config.port}/api/v1/telemetry`);
+
+    const pgOk = await checkConnection();
+    if (pgOk) {
+      console.log(`Database:        Connected to PostgreSQL (${config.postgres.database})`);
+    } else {
+      console.warn(`-------------------------------------------------------`);
+      console.warn(`[Prerequisite Alert: PostgreSQL Disconnected]`);
+      console.warn(`Could not connect to PostgreSQL on ${config.postgres.host}:${config.postgres.port}/${config.postgres.database}.`);
+      console.warn(`Troubleshooting:`);
+      console.warn(`  1. Start PostgreSQL: brew services start postgresql@16`);
+      console.warn(`  2. Check status:     pg_isready -h ${config.postgres.host} -p ${config.postgres.port} -d ${config.postgres.database}`);
+      console.warn(`  3. Run migrations:   npm run db:migrate`);
+      console.warn(`-------------------------------------------------------`);
+    }
     console.log(`=======================================================`);
   });
 }

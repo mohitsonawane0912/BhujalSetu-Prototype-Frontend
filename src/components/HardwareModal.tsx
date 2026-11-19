@@ -145,7 +145,7 @@ export const HardwareModal: React.FC<HardwareModalProps> = ({
                 { step: '1', title: 'ESP32 Nodes', desc: 'Node 1 (recharge flow + HC-SR04 tank level) and Node 2 (extraction flow)', icon: Cpu, color: 'text-[#1F5A48]' },
                 { step: '2', title: 'Local Wi-Fi', desc: 'ESP32 nodes send authenticated JSON packets over the local 2.4 GHz LAN', icon: Wifi, color: 'text-[#3B7C8A]' },
                 { step: '3', title: 'Node.js / Express API', desc: 'Express validates POST /api/v1/telemetry with per-node schema and API keys', icon: Server, color: 'text-[#C56B4C]' },
-                { step: '4', title: 'Database & Rules Layer', desc: 'Stores verified node packets in prototype_node_telemetry in Firestore', icon: Database, color: 'text-[#1F5A48]' },
+                { step: '4', title: 'Database & Rules Layer', desc: 'Stores verified node packets in prototype_node_telemetry in PostgreSQL', icon: Database, color: 'text-[#1F5A48]' },
                 { step: '5', title: 'React Dashboard (BhujalSetu)', desc: 'Dashboard displays authenticated node readings, status, and history charts; community models remain separate baselines', icon: Code2, color: 'text-[#3B7C8A]' },
               ].map((item, idx) => {
                 const Icon = item.icon;
@@ -175,7 +175,7 @@ export const HardwareModal: React.FC<HardwareModalProps> = ({
             <div className="p-3.5 rounded-lg bg-[#1E2A28] text-[#F5F1E8] text-xs space-y-2">
               <div><code className="text-[#A7D7D7]">POST /api/v1/telemetry</code> validates node-specific schema (node-1 vs node-2).</div>
               <div><code className="text-[#A7D7D7]">GET /api/v1/telemetry?villageId=...</code> returns authorized community telemetry history.</div>
-              <div>Prototype records use the <code className="text-[#D9C6A4]">prototype_node_telemetry</code> Firestore collection. They do not populate groundwater depth or community water balance.</div>
+              <div>Prototype records use the <code className="text-[#D9C6A4]">prototype_node_telemetry</code> PostgreSQL table. They do not populate groundwater depth or community water balance.</div>
               <div>Use <code className="text-[#A7D7D7]">npm run test:backend</code> for hardware-free in-memory API checks.</div>
             </div>
             <div className="p-3 rounded-lg bg-[#C56B4C]/10 border border-[#C56B4C]/30 text-xs text-[#1E2A28]/80">

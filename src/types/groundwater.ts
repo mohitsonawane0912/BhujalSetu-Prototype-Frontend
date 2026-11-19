@@ -139,6 +139,65 @@ export interface CommunityGemSummary {
   ledger: GemAccrualItem[];
 }
 
+export interface WaterCreditLedgerEntry {
+  id: string;
+  communityId: string;
+  periodType: 'daily' | 'weekly' | 'monthly';
+  periodDate: string;
+  periodStart: string;
+  periodEnd: string;
+  rechargeLiters: number;
+  extractionLiters: number;
+  netSurplusLiters: number;
+  netDeficitLiters: number;
+  surplusPercentage: number | null;
+  creditsEarned: number;
+  dataCoverageStatus: 'complete' | 'incomplete' | 'waiting_for_data' | 'in_progress';
+  coveragePercentageNode1: number;
+  coveragePercentageNode2: number;
+  node1SampleCount: number;
+  node2SampleCount: number;
+  gapCountNode1: number;
+  gapCountNode2: number;
+  formulaVersion: string;
+  conversionRate: number;
+  disclaimer: string;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WaterCreditTodayStatus {
+  periodDate: string;
+  isCompleted: false;
+  status: 'in_progress' | 'waiting_for_data';
+  rechargeLiters: number;
+  extractionLiters: number;
+  netSurplusLiters: number;
+  netDeficitLiters: number;
+  surplusPercentage: number | null;
+  node1SampleCount: number;
+  node2SampleCount: number;
+  coveragePercentageNode1: number;
+  coveragePercentageNode2: number;
+  message: string;
+}
+
+export interface WaterCreditSummary {
+  communityId: string;
+  availableCredits: number;
+  totalRechargeLitersAllTime: number;
+  totalExtractionLitersAllTime: number;
+  latestCompletedDay: WaterCreditLedgerEntry | null;
+  todayRunning: WaterCreditTodayStatus;
+  conversionRate: number;
+  periodType: 'daily';
+  formulaVersion: string;
+  timezone: string;
+  minCoveragePercentRequired: number;
+  disclaimer: string;
+}
+
 export interface Alert {
   id: string;
   severity: AlertSeverity;
@@ -197,6 +256,8 @@ export interface VillageCommunity {
   name: string;
   district: string;
   state: string;
+  latitude?: number | null;
+  longitude?: number | null;
   aquiferType: string;
   participatingHouseholds: number;
   totalBorewellsTracked: number;

@@ -37,7 +37,7 @@ router.post('/v1/telemetry', requireNodeDeviceAuth, async (req: Request, res: Re
     });
   } catch (error) {
     console.error('[API] Node telemetry persistence failed:', error);
-    res.status(503).json({ success: false, error: 'Firestore is unavailable or server Firebase Admin credentials are missing; sample was not accepted.' });
+    res.status(503).json({ success: false, error: 'PostgreSQL database is unavailable or disconnected; sample was not accepted.' });
   }
 });
 

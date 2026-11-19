@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   CheckSquare,
   Sparkles,
@@ -13,9 +13,20 @@ import {
   SlidersHorizontal,
   Layers,
   HelpCircle,
+  AlertTriangle,
+  ShieldAlert,
+  CloudRain,
+  RefreshCw,
+  ChevronDown,
+  ChevronUp,
+  Waves,
+  Activity,
+  Calendar,
+  Compass,
 } from 'lucide-react';
 import { ActionRecommendation, ActionPriority, ActionStatus, CommunityActionItem } from '../types/groundwater';
 import { useAuth } from '../context/AuthContext';
+import { BhujalSetuApi, AiAdvisorData, AdviceLevel } from '../services/api';
 
 interface ActionsViewProps {
   recommendations: ActionRecommendation[];
@@ -34,6 +45,29 @@ export const ActionsView: React.FC<ActionsViewProps> = ({
   const [statusFilter, setStatusFilter] = useState<'ALL' | ActionStatus>('ALL');
   const [isLogModalOpen, setIsLogModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // AI Advisor state
+  const [advisorData, setAdvisorData] = useState<AiAdvisorData | null>(null);
+  const [advisorLoading, setAdvisorLoading] = useState(true);
+  const [advisorError, setAdvisorError] = useState<string | null>(null);
+  const [showEvidence, setShowEvidence] = useState(false);
+
+  const fetchAdvisor = async () => {
+    setAdvisorLoading(true);
+    setAdvisorError(null);
+    try {
+      const data = await BhujalSetuApi.getAiAdvisor(user?.communityId);
+      setAdvisorData(data);
+    } catch (err: any) {
+      setAdvisorError(err.message || 'Failed to load AI Advisor intelligence.');
+    } finally {
+      setAdvisorLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchAdvisor();
+  }, [user?.communityId]);
 
   // New action form state
   const [actionTitle, setActionTitle] = useState('');
@@ -102,48 +136,317 @@ export const ActionsView: React.FC<ActionsViewProps> = ({
         </button>
       </div>
 
-      {/* INTELLIGENT RULE-BASED ADVISOR PANEL (NOT A CHATBOT) */}
+      {/* 1. DYNAMIC AI GROUNDWATER ADVISOR PANEL (4 LEVELS FROM PITCH DECK SLIDE 12) */}
       <section className="bg-[#1E2A28] text-[#F5F1E8] rounded-2xl p-6 sm:p-7 shadow-md border border-[#2B3B38] relative overflow-hidden">
+        {/* Header with Title and Level Badge */}
         <div className="flex items-start justify-between flex-wrap gap-3">
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center space-x-2.5">
             <div className="w-8 h-8 rounded-lg bg-[#1F5A48] text-[#A7D7D7] flex items-center justify-center">
               <Sparkles className="w-4 h-4" />
             </div>
             <div>
-              <span className="text-[11px] font-bold tracking-wider text-[#A7D7D7] uppercase">
-                Community Stewardship Playbook
-              </span>
-              <h2 className="text-lg font-bold text-[#F5F1E8]">
-                Standard Conservation Guidelines
+              <div className="flex items-center space-x-2">
+                <span className="text-[11px] font-bold tracking-wider text-[#A7D7D7] uppercase">
+                  AI Groundwater Advisor
+                </span>
+                <span className="text-[10px] text-[#D9C6A4] font-medium bg-[#2B3B38] px-2 py-0.5 rounded border border-[#3E524D]">
+                  {advisorData?.synthesisSource === 'gemini' ? 'Gemini 2.5 Hydrological Synthesis' : 'Hydrological Rule Engine'}
+                </span>
+              </div>
+              <h2 className="text-lg font-bold text-[#F5F1E8] mt-0.5">
+                Participatory Hydrological Decision Layer
               </h2>
             </div>
           </div>
 
-          <div className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded bg-[#2B3B38] text-[10px] text-[#D9C6A4] font-medium border border-[#3E524D]">
-            <span>Operational Best Practices • Tabletop Sensors Measure Bench Flow Only</span>
+          <div className="flex items-center space-x-2">
+            {/* Advice Level Badge */}
+            {advisorLoading ? (
+              <span className="px-3 py-1 rounded bg-[#2B3B38] text-xs font-bold text-[#D9C6A4] flex items-center space-x-1.5">
+                <RefreshCw className="w-3.5 h-3.5 animate-spin text-[#A7D7D7]" />
+                <span>Evaluating Evidence...</span>
+              </span>
+            ) : advisorData?.level === 'NORMAL_USE' ? (
+              <span className="px-3 py-1 rounded-full bg-[#1F5A48] text-[#A7D7D7] border border-[#2B7A60] text-xs font-extrabold flex items-center space-x-1.5 shadow-xs">
+                <CheckCircle2 className="w-3.5 h-3.5 text-[#A7D7D7]" />
+                <span>NORMAL USE</span>
+              </span>
+            ) : advisorData?.level === 'CONSERVE_WATER' ? (
+              <span className="px-3 py-1 rounded-full bg-[#C56B4C]/25 text-[#F5D0A9] border border-[#C56B4C] text-xs font-extrabold flex items-center space-x-1.5 shadow-xs">
+                <AlertTriangle className="w-3.5 h-3.5 text-[#C56B4C]" />
+                <span>CONSERVE WATER</span>
+              </span>
+            ) : advisorData?.level === 'CRITICAL_CONSERVATION' ? (
+              <span className="px-3 py-1 rounded-full bg-[#B74A3B] text-white border border-[#E06A5A] text-xs font-extrabold flex items-center space-x-1.5 shadow-xs animate-pulse">
+                <ShieldAlert className="w-3.5 h-3.5 text-white" />
+                <span>CRITICAL CONSERVATION</span>
+              </span>
+            ) : advisorData?.level === 'PREPARE_RECHARGE' ? (
+              <span className="px-3 py-1 rounded-full bg-[#3B7C8A] text-white border border-[#5BA1B0] text-xs font-extrabold flex items-center space-x-1.5 shadow-xs">
+                <CloudRain className="w-3.5 h-3.5 text-[#A7E8D7]" />
+                <span>PREPARE RECHARGE</span>
+              </span>
+            ) : (
+              <span className="px-3 py-1 rounded-full bg-[#2B3B38] text-[#D9C6A4] border border-[#3E524D] text-xs font-extrabold flex items-center space-x-1.5">
+                <Clock className="w-3.5 h-3.5 text-[#D9C6A4]" />
+                <span>WAITING FOR DATA</span>
+              </span>
+            )}
+
+            <button
+              type="button"
+              onClick={fetchAdvisor}
+              disabled={advisorLoading}
+              title="Refresh AI Advisor Intelligence"
+              className="p-1.5 rounded-lg bg-[#2B3B38] hover:bg-[#3E524D] text-[#A7D7D7] transition-colors border border-[#3E524D]"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${advisorLoading ? 'animate-spin' : ''}`} />
+            </button>
           </div>
         </div>
 
-        {/* Primary Advisory Quote */}
-        <div className="mt-4 p-4 rounded-xl bg-[#2B3B38]/80 border border-[#3E524D]">
-          <p className="text-base sm:text-lg font-medium text-[#F5F1E8] leading-relaxed italic">
-            “Maintain regular rotation schedules for agricultural tubewells and ensure silt filtration beds in community recharge pits are cleared before peak seasonal runoff.”
-          </p>
-
-          <div className="mt-4 pt-3 border-t border-[#3E524D] flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center space-x-2 text-xs text-[#A7D7D7]">
-              <span>Guidance: Standard participatory recommendations for village water committees.</span>
+        {/* Live Advisor Output */}
+        <div className="mt-4 p-5 rounded-xl bg-[#2B3B38]/90 border border-[#3E524D]">
+          {advisorLoading ? (
+            <div className="py-6 flex flex-col items-center justify-center text-center space-y-2">
+              <RefreshCw className="w-6 h-6 text-[#A7D7D7] animate-spin" />
+              <p className="text-xs text-[#F5F1E8]/70">
+                Reviewing measured data and advisor status...
+              </p>
             </div>
-            {recommendations.length > 0 && (
-              <button
-                type="button"
-                onClick={() => setSelectedRecForDetail(recommendations[0])}
-                className="px-3 py-1.5 rounded bg-[#1F5A48] hover:bg-[#256d57] text-[#F5F1E8] text-xs font-semibold flex items-center space-x-1.5 transition-colors"
-              >
-                <HelpCircle className="w-3.5 h-3.5 text-[#A7D7D7]" />
-                <span>Guidance Context</span>
-              </button>
-            )}
+          ) : (
+            <>
+              <h3 className="text-base sm:text-lg font-bold text-[#F5F1E8] flex items-center space-x-2">
+                <span>{advisorData?.headline}</span>
+              </h3>
+
+              <p className="mt-2 text-sm sm:text-base text-[#F5F1E8]/90 leading-relaxed">
+                {advisorData?.explanation}
+              </p>
+
+              {/* Priority Recommended Action Box */}
+              <div className="mt-4 p-3.5 rounded-lg bg-[#1F5A48]/30 border border-[#2B7A60]/40 flex items-start space-x-3">
+                <div className="w-6 h-6 rounded-md bg-[#1F5A48] text-[#A7D7D7] flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                </div>
+                <div>
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-[#A7D7D7] block">
+                    Recommended Community Intervention:
+                  </span>
+                  <p className="text-xs sm:text-sm font-semibold text-[#F5F1E8] mt-0.5">
+                    {advisorData?.recommendedAction}
+                  </p>
+                </div>
+              </div>
+
+              {advisorData?.nextReviewAt && (
+                <p className="mt-3 text-[11px] text-[#D9C6A4]/80">
+                  Daily decision from the rolling last 24 hours. Next review: {new Date(advisorData.nextReviewAt).toLocaleString()}.
+                </p>
+              )}
+
+              {/* Evidence Toggle Button */}
+              <div className="mt-4 pt-3 border-t border-[#3E524D] flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center space-x-2 text-xs text-[#D9C6A4]">
+                  <span>Inputs: Hardware telemetry • Open-Meteo Weather • IMD Agro-Climatic rules</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowEvidence(!showEvidence)}
+                  className="px-3 py-1.5 rounded bg-[#1F5A48] hover:bg-[#256d57] text-[#F5F1E8] text-xs font-semibold flex items-center space-x-1.5 transition-colors"
+                >
+                  <Activity className="w-3.5 h-3.5 text-[#A7D7D7]" />
+                  <span>{showEvidence ? 'Hide Evidence Breakdown' : 'Examine Evidence Breakdown'}</span>
+                  {showEvidence ? <ChevronUp className="w-3.5 h-3.5 ml-1" /> : <ChevronDown className="w-3.5 h-3.5 ml-1" />}
+                </button>
+              </div>
+
+              {/* Detailed Evidence Breakdown Grid */}
+              {showEvidence && advisorData?.evidence && (
+                <div className="mt-4 pt-4 border-t border-[#3E524D] space-y-3 text-xs">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+                    {/* Evidence 1: Node Telemetry */}
+                    <div className="p-3 rounded-lg bg-[#1E2A28] border border-[#3E524D]">
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="font-bold text-[#A7D7D7] flex items-center">
+                          <Activity className="w-3 h-3 mr-1" /> Node Telemetry
+                        </span>
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold uppercase ${
+                          advisorData.evidence.nodeTelemetry.status === 'measured'
+                            ? 'bg-[#1F5A48] text-[#A7D7D7]'
+                            : advisorData.evidence.nodeTelemetry.status === 'stale'
+                            ? 'bg-[#C56B4C]/30 text-[#F5D0A9]'
+                            : 'bg-[#2B3B38] text-[#D9C6A4]'
+                        }`}>
+                          {advisorData.evidence.nodeTelemetry.status}
+                        </span>
+                      </div>
+                      <div className="space-y-1.5 text-[11px] text-[#F5F1E8]/85">
+                        <div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-[#A7D7D7] font-semibold">Node 1 (Recharge):</span>
+                            <span className="text-[10px] font-medium text-[#D9C6A4]">
+                              {advisorData.evidence.nodeTelemetry.node1Freshness || (advisorData.evidence.nodeTelemetry.rechargeFlowLpm !== null ? 'Live' : 'Missing')}
+                            </span>
+                          </div>
+                          <p className="text-[10px] text-[#F5F1E8]/70">
+                            Latest: {advisorData.evidence.nodeTelemetry.rechargeFlowLpm !== null ? `${advisorData.evidence.nodeTelemetry.rechargeFlowLpm.toFixed(2)} L/min` : 'No reading'} • 24h avg: {advisorData.evidence.nodeTelemetry.averageRechargeFlowLpm !== null ? `${advisorData.evidence.nodeTelemetry.averageRechargeFlowLpm.toFixed(2)} L/min` : 'No samples'} • Tank: {advisorData.evidence.nodeTelemetry.tankLevelCm !== null ? `${advisorData.evidence.nodeTelemetry.tankLevelCm.toFixed(1)} cm` : 'No ultrasonic'}
+                          </p>
+                        </div>
+
+                        <div className="pt-1 border-t border-[#3E524D]/50">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[#A7D7D7] font-semibold">Node 2 (Extraction):</span>
+                            <span className="text-[10px] font-medium text-[#D9C6A4]">
+                              {advisorData.evidence.nodeTelemetry.node2Freshness || (advisorData.evidence.nodeTelemetry.extractionFlowLpm !== null ? 'Live' : 'Missing')}
+                            </span>
+                          </div>
+                          <p className="text-[10px] text-[#F5F1E8]/70">
+                            Latest: {advisorData.evidence.nodeTelemetry.extractionFlowLpm !== null ? `${advisorData.evidence.nodeTelemetry.extractionFlowLpm.toFixed(2)} L/min` : 'No reading'} • 24h avg: {advisorData.evidence.nodeTelemetry.averageExtractionFlowLpm !== null ? `${advisorData.evidence.nodeTelemetry.averageExtractionFlowLpm.toFixed(2)} L/min` : 'No samples'} • Total: {advisorData.evidence.nodeTelemetry.extractionTotalLiters !== null ? `${advisorData.evidence.nodeTelemetry.extractionTotalLiters.toFixed(2)} L` : '0 L'}
+                          </p>
+                        </div>
+                      </div>
+
+                      {advisorData.evidence.nodeTelemetry.limitationNote && (
+                        <p className="mt-2 text-[10px] text-[#F5D0A9] bg-[#C56B4C]/15 p-1 rounded border border-[#C56B4C]/30">
+                          {advisorData.evidence.nodeTelemetry.limitationNote}
+                        </p>
+                      )}
+
+                      <div className="mt-2 text-[10px] text-[#D9C6A4]/70 pt-1.5 border-t border-[#3E524D]/60">
+                        Window: {advisorData.evidence.nodeTelemetry.windowDuration} • Samples: {advisorData.evidence.nodeTelemetry.sampleCount}
+                      </div>
+                    </div>
+
+                    {/* Evidence 2: Weather Forecast */}
+                    <div className="p-3 rounded-lg bg-[#1E2A28] border border-[#3E524D]">
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="font-bold text-[#A7D7D7] flex items-center">
+                          <CloudRain className="w-3 h-3 mr-1" /> Weather Forecast
+                        </span>
+                        <span className="text-[10px] text-[#D9C6A4] px-1.5 py-0.5 rounded bg-[#2B3B38]">
+                          {advisorData.evidence.weather.status}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-[#F5F1E8]/80">
+                        {advisorData.evidence.weather.summary}
+                      </p>
+                      <div className="mt-2 text-[10px] text-[#D9C6A4]/70 pt-1.5 border-t border-[#3E524D]/60">
+                        Source: {advisorData.evidence.weather.source}<br />
+                        Location: {advisorData.evidence.weather.location}
+                      </div>
+                    </div>
+
+                    {/* Evidence 3: Seasonal Context */}
+                    <div className="p-3 rounded-lg bg-[#1E2A28] border border-[#3E524D]">
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="font-bold text-[#A7D7D7] flex items-center">
+                          <Calendar className="w-3 h-3 mr-1" /> Seasonal Context
+                        </span>
+                        <span className="text-[10px] text-[#D9C6A4] px-1.5 py-0.5 rounded bg-[#2B3B38]">
+                          IMD Calendar
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-[#F5F1E8]/80">
+                        <strong>{advisorData.evidence.seasonal.seasonName}</strong> ({advisorData.evidence.seasonal.calendarPeriod})
+                      </p>
+                      <p className="text-[10px] text-[#F5F1E8]/70 mt-1">
+                        {advisorData.evidence.seasonal.guidance}
+                      </p>
+                      <div className="mt-2 text-[10px] text-[#D9C6A4]/70 pt-1.5 border-t border-[#3E524D]/60">
+                        Rule: {advisorData.evidence.seasonal.ruleSource}
+                      </div>
+                    </div>
+
+                    {/* Evidence 4: Groundwater Depth Limitation Note */}
+                    <div className="p-3 rounded-lg bg-[#1E2A28] border border-[#3E524D]">
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="font-bold text-[#A7D7D7] flex items-center">
+                          <Waves className="w-3 h-3 mr-1" /> Deep Aquifer Depth
+                        </span>
+                        <span className="text-[10px] text-[#C56B4C] px-1.5 py-0.5 rounded bg-[#2B3B38]">
+                          UNMEASURED
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-[#F5F1E8]/80">
+                        {advisorData.evidence.groundwater.limitationNote}
+                      </p>
+                      <div className="mt-2 text-[10px] text-[#D9C6A4]/70 pt-1.5 border-t border-[#3E524D]/60">
+                        Source: Tabletop HC-SR04 ultrasonic sensor measures reservoir water level, not deep borewell tables.
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Anomaly Detection Status Banner */}
+                  <div className="p-3 rounded-lg bg-[#1E2A28] border border-[#3E524D] flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <strong className="text-xs text-[#A7D7D7]">Extraction Anomaly Baseline Status:</strong>{' '}
+                      <span className="text-xs text-[#F5F1E8]/85">
+                        {advisorData.evidence.anomaly.detected
+                          ? `Anomaly active: ${advisorData.evidence.anomaly.reason}`
+                          : advisorData.evidence.anomaly.baselineLpm
+                          ? `Normal extraction operating baseline established (${advisorData.evidence.anomaly.baselineLpm.toFixed(2)} L/min)`
+                          : 'Awaiting 10 active pumping samples to establish statistical baseline'}
+                      </span>
+                    </div>
+                    {advisorData.evidence.anomaly.detected && (
+                      <span className="px-2 py-0.5 rounded bg-[#B74A3B] text-white font-bold text-[10px]">
+                        ANOMALY DETECTED
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* Data Quality & Limitation Disclaimer */}
+        <div className="mt-3 px-3 py-2 rounded-lg bg-[#2B3B38]/50 border border-[#3E524D]/60 flex items-center space-x-2 text-[10px] text-[#D9C6A4]">
+          <Info className="w-3.5 h-3.5 text-[#A7D7D7] flex-shrink-0" />
+          <span>{advisorData?.dataQualityNote || 'Tabletop prototype sensors measure bench flow and reservoir level only.'}</span>
+        </div>
+      </section>
+
+      {/* 2. STATIC PARTICIPATORY GUIDELINES (CLEARLY SEPARATE EDUCATIONAL REFERENCE) */}
+      <section className="bg-[#EAE5DB] border border-[#D8D2C4] rounded-2xl p-5 shadow-xs">
+        <div className="flex items-start justify-between flex-wrap gap-2 pb-3 border-b border-[#D8D2C4]">
+          <div>
+            <div className="flex items-center space-x-2">
+              <span className="text-xs font-bold uppercase tracking-wider text-[#1E2A28]/60">
+                Community Playbook
+              </span>
+              <span className="text-[10px] font-bold text-[#1F5A48] bg-[#1F5A48]/10 px-2 py-0.5 rounded">
+                Static Reference Guidelines
+              </span>
+            </div>
+            <h3 className="text-base font-bold text-[#1E2A28] mt-0.5">
+              Standard Village Groundwater Stewardship Framework
+            </h3>
+          </div>
+          <span className="text-[10px] text-[#1E2A28]/60 italic max-w-xs text-right">
+            General operational guidelines for village water security committees (Pani Samiti).
+          </span>
+        </div>
+
+        <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs text-[#1E2A28]/80">
+          <div className="p-3 rounded-lg bg-[#F5F1E8] border border-[#D8D2C4]">
+            <strong className="block text-[#1E2A28] font-bold mb-1">Rotational Tubewell Shifts</strong>
+            <p className="text-[11px] text-[#1E2A28]/70">
+              Maintain synchronized pumping schedules among clustered agricultural borewells to minimize localized drawdown cones.
+            </p>
+          </div>
+          <div className="p-3 rounded-lg bg-[#F5F1E8] border border-[#D8D2C4]">
+            <strong className="block text-[#1E2A28] font-bold mb-1">Pre-Monsoon Filter Clearing</strong>
+            <p className="text-[11px] text-[#1E2A28]/70">
+              Clear sand and gravel filtration beds in community percolation pits prior to seasonal rain runoff pulses.
+            </p>
+          </div>
+          <div className="p-3 rounded-lg bg-[#F5F1E8] border border-[#D8D2C4]">
+            <strong className="block text-[#1E2A28] font-bold mb-1">Night Leak Inspection</strong>
+            <p className="text-[11px] text-[#1E2A28]/70">
+              Perform periodic night-time flow checks when domestic and agricultural drawdowns are paused to verify pipeline integrity.
+            </p>
           </div>
         </div>
       </section>
