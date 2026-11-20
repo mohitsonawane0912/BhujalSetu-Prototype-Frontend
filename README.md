@@ -9,8 +9,18 @@ The active hardware prototype uses two ESP32-WROOM-32 nodes:
 - **Node 1 (Recharge line):** YF-S201 flow sensor + HC-SR04 ultrasonic sensor measuring tabletop tank water level in cm (not groundwater depth).
 - **Node 2 (Extraction line):** YF-S201 flow sensor on the pump extraction hose.
 - **Manual pump:** Switched manually for demonstration. No pump control, relay automation, or claim of measuring pump status.
-- **Data boundaries:** Tabletop flow and tank level only; not aquifer depth, water balance, or credit awards.
-- **GEMs & Water Credits:** Proposed conceptual feature for future development; no points or tokens are calculated, awarded, or stored.
+- **Data boundaries:** The tabletop sensors measure only the prototype's flow and tank level. They do not measure aquifer depth or establish a real village-wide groundwater balance.
+
+## Prototype Water Credits (Implemented)
+
+The existing Water Balance page includes a daily Water Credits ledger based on measured tabletop telemetry:
+
+- **Daily calculation:** Node 1 recharge litres are compared with Node 2 extraction litres for a completed calendar day in Asia/Kolkata.
+- **Conversion:** `floor(max(0, recharge litres - extraction litres))` — one Water Credit per whole net litre of measured surplus. A deficit earns zero credits and does not subtract previously earned credits.
+- **Data quality:** Both nodes must have measured packets and at least 75% time coverage. The calculation does not interpolate across telemetry gaps longer than 60 seconds; incomplete days earn zero credits.
+- **Storage:** Completed daily results are kept in an auditable PostgreSQL ledger and duplicate calculations do not award credits twice. Today's values are shown as in progress and are not awarded before the day is complete.
+- **Scope:** These are prototype recognition points calculated from tabletop Node 1 and Node 2 flows. They are not a village aquifer balance, cash value, or confirmed external reward entitlement.
+- **Calibration:** The current backend uses a nominal 450 pulses-per-litre factor. Calibrate the physical sensors and update the calibration configuration before relying on the volume totals as calibrated measurements.
 
 ## Local PostgreSQL Database & Backend Setup
 
@@ -64,4 +74,4 @@ The active hardware prototype uses two ESP32-WROOM-32 nodes:
    npm run telemetry:clean-backups -- --all --confirm
    ```
 
-See [docs/TWO_NODE_BACKEND_SETUP.md](docs/TWO_NODE_BACKEND_SETUP.md) for detailed wiring, sensor calibration, packet specs, and the manual development Firestore cleanup guide.
+See [docs/TWO_NODE_BACKEND_SETUP.md](docs/TWO_NODE_BACKEND_SETUP.md) for wiring, flow-sensor calibration, telemetry packet details, and local PostgreSQL setup and data-management instructions.
