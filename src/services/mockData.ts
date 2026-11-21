@@ -1,10 +1,7 @@
 import {
   GroundwaterReading,
   WaterBalance,
-  Alert,
   ActionRecommendation,
-  CommunityActionItem,
-  WaterPledgeItem,
   VillageCommunity,
   HardwareSensorSpec,
 } from '../types/groundwater';
@@ -107,247 +104,73 @@ export const MONTHLY_WATER_BALANCE: WaterBalance = calculateWaterBalance(
   'Past 30 Days Cumulative'
 );
 
-// Alerts (Simulated rule-triggered alerts)
-export const INITIAL_ALERTS: Alert[] = [
-  {
-    id: 'alert-01',
-    severity: 'WATCH',
-    title: 'Groundwater level is declining faster than recent baseline',
-    message: 'Water depth has reached 18.4 m (-0.6 m shift in 7 days). Extraction remains 1.4× higher than recharge infiltration.',
-    triggerMetric: 'Water Level Shift',
-    thresholdValue: '-0.30 m / week',
-    actualValue: '-0.60 m / week',
-    timestamp: '2 hours ago',
-  },
-  {
-    id: 'alert-02',
-    severity: 'NORMAL',
-    title: 'Recharge Pit #3 De-silting verified',
-    message: 'Filter media cleared by Ward 2 volunteer team. Percolation rate restored to 45 L/min design capacity.',
-    triggerMetric: 'Percolation Infiltration',
-    thresholdValue: '> 30 L/min',
-    actualValue: '45 L/min',
-    timestamp: 'Yesterday at 16:30',
-  },
-  {
-    id: 'alert-03',
-    severity: 'CRITICAL',
-    title: 'High continuous draw detected at East Borewell #05',
-    message: 'Continuous night pumping for 7 consecutive hours detected. Potential unregistered commercial draw or valve failure.',
-    triggerMetric: 'Uninterrupted Draw Duration',
-    thresholdValue: '< 4.0 hours',
-    actualValue: '7.2 hours',
-    timestamp: 'Yesterday at 04:15',
-  },
-];
-
-// Initial Action Recommendations
+// Initial Standard Participatory Action Recommendations
 export const INITIAL_RECOMMENDATIONS: ActionRecommendation[] = [
   {
     id: 'rec-01',
-    title: 'Extraction is above recent recharge capacity',
-    whyAppeared: 'Community extraction (51.7 m³/day) exceeded managed recharge and natural infiltration (36.3 m³/day) by 42% over the last 5 days.',
-    suggestedAction: 'Coordinate with agricultural committee to implement 36-hour rotation between North and South agricultural pump sets.',
+    title: 'Establish rotating community tubewell pumping roster',
+    whyAppeared: 'Standard Participatory Guideline: Staggering pump operational hours prevents localized extraction drawdown cones and protects shared aquifer yields.',
+    suggestedAction: 'Coordinate with village water committee (Pani Samiti) to schedule alternating shifts between agricultural pump clusters.',
     priority: 'HIGH',
     status: 'OPEN',
     category: 'EXTRACTION',
     supportingMetrics: [
-      { label: 'Daily Extraction', value: '51.7 m³', threshold: 'Target: < 38.0 m³' },
-      { label: 'Recharge Inflow', value: '36.3 m³', threshold: 'Min: 35.0 m³' },
-      { label: 'Aquifer Net Balance', value: '-15.4 m³ (Deficit)', threshold: 'Target: >= 0 m³' },
+      { label: 'Operational Focus', value: 'Pumping Schedule', threshold: 'Target: Rotating shifts' },
+      { label: 'Participatory Policy', value: 'Off-Peak Irrigation', threshold: 'Minimize evaporative loss' },
+      { label: 'Guideline Basis', value: 'Standard Practice', threshold: 'Community agreement' },
     ],
-    dateGenerated: 'Generated today at 06:00',
+    dateGenerated: 'Standard Playbook Recommendation',
   },
   {
     id: 'rec-02',
-    title: 'Prioritize recharge after rainfall events',
-    whyAppeared: 'A 24.5 mm rainfall event was recorded. Surrounding catchment runoff is currently peaking along the secondary nullah.',
-    suggestedAction: 'Open diversion gates to the Ward 4 percolation pond and inspect silt trap filters to capture the first post-monsoon wave.',
+    title: 'Inspect and clear silt filtration beds in community recharge pits',
+    whyAppeared: 'Standard Participatory Guideline: De-silting recharge structures prior to peak seasonal runoff maximizes surface water infiltration.',
+    suggestedAction: 'Organize community shramdaan (volunteer effort) to clear surface debris and inspect sand-gravel filter beds along percolation channels.',
     priority: 'HIGH',
     status: 'OPEN',
     category: 'RECHARGE',
     supportingMetrics: [
-      { label: 'Recorded Rain', value: '24.5 mm', threshold: 'Threshold: >= 15 mm' },
-      { label: 'Runoff Inflow Potential', value: '38,000 L', threshold: 'Pond Capacity: 60,000 L' },
+      { label: 'Operational Focus', value: 'De-Silting & Filtration', threshold: 'Inspect before rains' },
+      { label: 'Asset Readiness', value: 'Runoff Capture', threshold: 'Ensure silt beds clear' },
     ],
-    dateGenerated: 'Generated 6 hours ago',
+    dateGenerated: 'Standard Playbook Recommendation',
   },
   {
     id: 'rec-03',
-    title: 'Check the borewell area for unusual extraction or pipe leaks',
-    whyAppeared: 'Sensor HC-SR04 registered sudden 0.4 m drop during non-irrigation window between 01:00 and 05:00.',
-    suggestedAction: 'Conduct physical line walk on western distribution main; verify if automatic float valve in the overhead tank stuck open.',
+    title: 'Conduct physical line walks to detect distribution pipe leaks',
+    whyAppeared: 'Standard Participatory Guideline: Unrepaired distribution leaks deplete village overhead storage without recharging aquifers.',
+    suggestedAction: 'Inspect community pipeline joints, standposts, and float valves across all village distribution sectors.',
     priority: 'MEDIUM',
     status: 'IN_PROGRESS',
     category: 'MONITORING',
     supportingMetrics: [
-      { label: 'Night Flow Rate', value: '18 L/min', threshold: 'Expected: < 3 L/min' },
-      { label: 'Sudden Drop', value: '-0.42 m', threshold: 'Allowed: < 0.10 m' },
+      { label: 'Operational Focus', value: 'Pipeline Inspection', threshold: 'Zero visible leaks' },
+      { label: 'Distribution Check', value: 'Overhead Float Valves', threshold: 'Prevent tank overflow' },
     ],
-    dateGenerated: 'Generated yesterday',
+    dateGenerated: 'Standard Playbook Recommendation',
   },
   {
     id: 'rec-04',
-    title: 'Schedule seasonal aquifer boundary audit',
-    whyAppeared: '30-day monitoring cycle completed. Seasonal post-harvest recharge review is now due.',
-    suggestedAction: 'Convene monthly Pani Samiti (Water Committee) meeting to review household consumption and recharge pit readiness.',
+    title: 'Convene monthly participatory water budgeting meeting',
+    whyAppeared: 'Standard Participatory Guideline: Periodic community reviews align seasonal crop choices with monitored water balance data.',
+    suggestedAction: 'Convene monthly Pani Samiti (Water Committee) meeting to review household conservation pledges and collective water balance.',
     priority: 'LOW',
     status: 'COMPLETED',
     category: 'MAINTENANCE',
     supportingMetrics: [
-      { label: 'Monitoring Cycle', value: 'Day 30 of 30', threshold: 'Monthly' },
-      { label: 'Participating Households', value: '342 families', threshold: 'Target: 300+' },
+      { label: 'Operational Focus', value: 'Water Budgeting', threshold: 'Monthly Pani Samiti' },
+      { label: 'Household Engagement', value: 'Voluntary Pledges', threshold: 'Community adoption' },
     ],
-    dateGenerated: '3 days ago',
-  },
-];
-
-// Initial Community Actions
-export const INITIAL_COMMUNITY_ACTIONS: CommunityActionItem[] = [
-  {
-    id: 'act-01',
-    userId: 'user-rampur-01',
-    userName: 'Kavita Patel (Ward 2 Head)',
-    userEmail: 'kavita.p@rampur.in',
-    actionType: 'recharge_pit_clearing',
-    title: 'Ward 2 Main Silt Basin De-Silting',
-    description: 'Mobilized 8 neighborhood volunteers to dig out 1.2 tons of compacted silt from the percolation basin ahead of expected rain.',
-    ward: 'Ward 2 (Northern Catchment)',
-    impactLiters: 45000,
-    status: 'completed',
-    createdAt: '2026-10-23T14:30:00Z',
-  },
-  {
-    id: 'act-02',
-    userId: 'user-rampur-02',
-    userName: 'Rameshwar Meena (Farmer Group Lead)',
-    userEmail: 'rameshwar.m@rampur.in',
-    actionType: 'borewell_scheduling',
-    title: 'Pumping Schedule Shift to Night Roster',
-    description: 'Agreed with 14 neighboring tubewell owners to halt peak daytime pumping between 11:00 and 16:00 to reduce cone-of-depression stress.',
-    ward: 'Ward 4 (Agricultural Fields)',
-    impactLiters: 32000,
-    status: 'in_progress',
-    createdAt: '2026-10-22T09:15:00Z',
-  },
-  {
-    id: 'act-03',
-    userId: 'user-rampur-03',
-    userName: 'Anil Godara (Youth Club Secretary)',
-    userEmail: 'anil.g@rampur.in',
-    actionType: 'rainwater_harvest_check',
-    title: 'Government School Rooftop Filter Media Replacement',
-    description: 'Installed washed pea gravel and charcoal filter bed on the 400 m² primary school rooftop rainwater pipe.',
-    ward: 'Ward 1 (Central Village)',
-    impactLiters: 18000,
-    status: 'completed',
-    createdAt: '2026-10-20T11:00:00Z',
-  },
-  {
-    id: 'act-04',
-    userId: 'user-rampur-04',
-    userName: 'Sunita Mehar (Jal Saheli)',
-    userEmail: 'sunita.m@rampur.in',
-    actionType: 'leak_repair',
-    title: 'Community Standpost Tap Washer Overhaul',
-    description: 'Repaired 11 dripping public standpost taps across Bazaar chowk, saving continuous 24/7 drip losses.',
-    ward: 'Ward 3 (Market Area)',
-    impactLiters: 8500,
-    status: 'completed',
-    createdAt: '2026-10-19T16:00:00Z',
-  },
-];
-
-// Initial Water Pledges
-export const INITIAL_WATER_PLEDGES: WaterPledgeItem[] = [
-  {
-    id: 'pledge-01',
-    userId: 'p-user-1',
-    userName: 'Dinesh & Family',
-    pledgeType: 'irrigation_timing',
-    targetLitersPerDay: 120,
-    communityId: 'village-rampur-04',
-    createdAt: '2026-10-21T08:00:00Z',
-  },
-  {
-    id: 'pledge-02',
-    userId: 'p-user-2',
-    userName: 'Bhanwari Devi',
-    pledgeType: 'rain_storage',
-    targetLitersPerDay: 80,
-    communityId: 'village-rampur-04',
-    createdAt: '2026-10-22T10:30:00Z',
-  },
-  {
-    id: 'pledge-03',
-    userId: 'p-user-3',
-    userName: 'Kishanlal Carpenter',
-    pledgeType: 'aerator_install',
-    targetLitersPerDay: 45,
-    communityId: 'village-rampur-04',
-    createdAt: '2026-10-23T12:00:00Z',
-  },
-  {
-    id: 'pledge-04',
-    userId: 'p-user-4',
-    userName: 'Govind Teacher',
-    pledgeType: 'recharge_well_adoption',
-    targetLitersPerDay: 200,
-    communityId: 'village-rampur-04',
-    createdAt: '2026-10-24T06:15:00Z',
+    dateGenerated: 'Standard Playbook Recommendation',
   },
 ];
 
 // Prototype Hardware Spec (ESP32)
 export const PROTOTYPE_HARDWARE_SPEC: HardwareSensorSpec = {
   controller: 'ESP32-WROOM-32 (32-bit Dual Core Tensilica Xtensa, 240MHz)',
-  waterLevelSensor: 'HC-SR04 Ultrasonic Ranging Module (calibrated for well casing depth 0.2m - 40m)',
-  flowSensors: '2 × YF-S201 Hall-Effect Turbines (Sensor 1: Inflow Recharge, Sensor 2: Borewell Extraction)',
-  actuator: '5V Optocoupler Relay controlling 12V/220V Submersible Valve & Solenoid Protection',
-  telemetryMode: 'Wi-Fi 802.11 b/g/n → JSON payload over HTTPS REST / MQTT topic',
-  samplingIntervalSeconds: 60,
+  waterLevelSensor: 'HC-SR04 ultrasonic sensor mounted over tabletop tank',
+  flowSensors: '2 × YF-S201 flow sensors (tabletop loop inlet and outlet)',
+  actuator: 'Manual switch for tabletop DC mini pump; no automated relay control',
+  telemetryMode: '2.4 GHz Wi-Fi → authenticated JSON HTTP POST to local backend',
+  samplingIntervalSeconds: 10,
 };
-
-// Trend Data Generator for 7d, 30d, 90d
-export function generateTrendSeries(days: number) {
-  const result = [];
-  const baseDepth = 17.2;
-  const now = new Date();
-
-  for (let i = days - 1; i >= 0; i--) {
-    const d = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
-    const dayName = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-
-    // Simulated rain events every ~6 to 10 days
-    const isRainDay = (days - i) % 7 === 0 || (days - i) % 11 === 0;
-    const rainfall = isRainDay ? Math.round((8 + Math.abs(Math.sin(i * 1.5)) * 18) * 10) / 10 : 0;
-
-    // Recharge happens when rainfall > 0 or base managed recharge
-    const rechargeLiters = rainfall > 0
-      ? Math.round(rainfall * 950 + 15000 + (Math.sin(i) * 3000))
-      : Math.round(14000 + Math.cos(i) * 2000);
-
-    // Extraction varies between 38,000L and 56,000L
-    const extractionLiters = Math.round(44000 + Math.sin(i * 0.8) * 9000);
-
-    // Depth gradually drifts down unless rain recharges
-    const seasonalDrift = (days - i) * 0.015;
-    const rainRecovery = rainfall > 15 ? 0.35 : (rainfall > 5 ? 0.12 : 0);
-    const depthMeters = Math.round((baseDepth + seasonalDrift - rainRecovery) * 100) / 100;
-
-    const netBalanceM3 = Math.round(((rechargeLiters - extractionLiters) / 1000) * 10) / 10;
-
-    result.push({
-      date: dayName,
-      fullDate: d.toISOString().split('T')[0],
-      depthMeters,
-      baselineDepthMeters: 17.5,
-      waterExtractedLiters: extractionLiters,
-      waterRechargedLiters: rechargeLiters,
-      rainfallMm: rainfall,
-      netBalanceM3,
-    });
-  }
-
-  return result;
-}

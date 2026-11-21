@@ -9,6 +9,53 @@ export type BalancePeriod = 'daily' | 'weekly' | 'monthly';
 export type ActionPriority = 'HIGH' | 'MEDIUM' | 'LOW';
 export type ActionStatus = 'OPEN' | 'IN_PROGRESS' | 'COMPLETED';
 
+export type TelemetryDataSource = 'measured' | 'simulated';
+
+export type TelemetryConnectionStatus =
+  | 'loading'
+  | 'signed-out'
+  | 'unauthorized'
+  | 'backend-error'
+  | 'no-data'
+  | 'ready';
+
+export interface PrototypeTelemetry {
+  id: string;
+  deviceId: string;
+  villageId: string;
+  timestamp: string;
+  receivedAt: string;
+  dataSource: TelemetryDataSource;
+  tankLevelPercent: number;
+  tankDistanceCm: number;
+  flowInLpm: number;
+  flowOutLpm: number;
+  flowInLitersTotal: number;
+  flowOutLitersTotal: number;
+  pumpEnabled: boolean;
+}
+
+export interface NodePrototypeTelemetry {
+  id: string;
+  schemaVersion: 1;
+  deviceId: string;
+  nodeId: 'node-1' | 'node-2';
+  villageId: string;
+  dataSource: TelemetryDataSource;
+  capturedAt: string;
+  receivedAt: string;
+  flow: {
+    pulses: number;
+    frequencyHz: number;
+    flowLpm: number;
+    totalLiters: number;
+  };
+  waterLevel?: {
+    distanceCm: number;
+    levelCm: number;
+  };
+}
+
 export interface GroundwaterReading {
   timestamp: string; // ISO string
   depthMeters: number; // e.g. 18.4 m below ground
@@ -46,20 +93,109 @@ export interface RechargeEvent {
 export interface WaterBalance {
   period: BalancePeriod;
   dateLabel: string;
+  hasLiveTelemetry?: boolean;
+  isPrototypeMeasured?: boolean;
+  status?: 'measured' | 'waiting_for_devices';
   inputs: {
     rainfallInfiltrationLiters: number;
     managedRechargeLiters: number;
     subsurfaceInflowLiters: number;
     totalInputsLiters: number;
-  };
+  } | null;
   outputs: {
     borewellExtractionLiters: number;
     communityUsageLiters: number;
     otherAgriculturalExtractionLiters: number;
     totalOutputsLiters: number;
-  };
-  netBalanceLiters: number; // Positive = surplus, Negative = deficit
-  netBalanceM3: number;
+  } | null;
+  netBalanceLiters: number | null; // Positive = surplus, Negative = deficit
+  netBalanceM3: number | null;
+  alignedWindowsCount?: number;
+  message?: string;
+  disclaimer?: string;
+}
+
+export interface GemAccrualItem {
+  id: string;
+  villageId: string;
+  windowStart: string;
+  windowEnd: string;
+  rechargeLiters: number;
+  extractionLiters: number;
+  netLiters: number;
+  gemsAwarded: number;
+  node1RecordCount: number;
+  node2RecordCount: number;
+  accruedAt: string;
+  rule: string;
+}
+
+export interface CommunityGemSummary {
+  villageId: string;
+  aggregateBalance: number;
+  totalNetRechargeLiters: number;
+  lastAccrualAt: string | null;
+  rule: string;
+  ledger: GemAccrualItem[];
+}
+
+export interface WaterCreditLedgerEntry {
+  id: string;
+  communityId: string;
+  periodType: 'daily' | 'weekly' | 'monthly';
+  periodDate: string;
+  periodStart: string;
+  periodEnd: string;
+  rechargeLiters: number;
+  extractionLiters: number;
+  netSurplusLiters: number;
+  netDeficitLiters: number;
+  surplusPercentage: number | null;
+  creditsEarned: number;
+  dataCoverageStatus: 'complete' | 'incomplete' | 'waiting_for_data' | 'in_progress';
+  coveragePercentageNode1: number;
+  coveragePercentageNode2: number;
+  node1SampleCount: number;
+  node2SampleCount: number;
+  gapCountNode1: number;
+  gapCountNode2: number;
+  formulaVersion: string;
+  conversionRate: number;
+  disclaimer: string;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WaterCreditTodayStatus {
+  periodDate: string;
+  isCompleted: false;
+  status: 'in_progress' | 'waiting_for_data';
+  rechargeLiters: number;
+  extractionLiters: number;
+  netSurplusLiters: number;
+  netDeficitLiters: number;
+  surplusPercentage: number | null;
+  node1SampleCount: number;
+  node2SampleCount: number;
+  coveragePercentageNode1: number;
+  coveragePercentageNode2: number;
+  message: string;
+}
+
+export interface WaterCreditSummary {
+  communityId: string;
+  availableCredits: number;
+  totalRechargeLitersAllTime: number;
+  totalExtractionLitersAllTime: number;
+  latestCompletedDay: WaterCreditLedgerEntry | null;
+  todayRunning: WaterCreditTodayStatus;
+  conversionRate: number;
+  periodType: 'daily';
+  formulaVersion: string;
+  timezone: string;
+  minCoveragePercentRequired: number;
+  disclaimer: string;
 }
 
 export interface Alert {
@@ -92,6 +228,7 @@ export interface ActionRecommendation {
 
 export interface CommunityActionItem {
   id: string;
+  communityId: string;
   userId: string;
   userName: string;
   userEmail?: string;
@@ -119,6 +256,8 @@ export interface VillageCommunity {
   name: string;
   district: string;
   state: string;
+  latitude?: number | null;
+  longitude?: number | null;
   aquiferType: string;
   participatingHouseholds: number;
   totalBorewellsTracked: number;
@@ -128,7 +267,7 @@ export interface VillageCommunity {
 
 export interface HardwareSensorSpec {
   controller: string; // "ESP32-WROOM-32"
-  waterLevelSensor: string; // "HC-SR04 Ultrasonic Sensor (Well depth)"
+  waterLevelSensor: string; // HC-SR04 mounted above a tabletop tank
   flowSensors: string; // "2 × YF-S201 Hall-Effect Flow Sensors"
   actuator: string; // "5V Relay + Submersible Pump"
   telemetryMode: string; // "Wi-Fi HTTP REST / MQTT"

@@ -79,11 +79,11 @@ export const HardwareModal: React.FC<HardwareModalProps> = ({
         {/* Tab 1: Hardware Specifications */}
         {activeTab === 'hardware' && (
           <div className="mt-5 space-y-4 text-xs text-[#1E2A28]">
-            <div className="p-3 rounded-lg bg-[#C56B4C]/15 border border-[#C56B4C]/30 text-[#B74A3B] flex items-start space-x-2">
-              <Info className="w-4 h-4 flex-shrink-0 mt-0.5" />
+            <div className="p-3 rounded-lg bg-[#EAE5DB] border border-[#D8D2C4] text-[#1E2A28] flex items-start space-x-2">
+              <Info className="w-4 h-4 text-[#1F5A48] flex-shrink-0 mt-0.5" />
               <div>
-                <strong className="block">Hardware Integrity Guarantee:</strong>
-                BhujalSetu does not fake hardware connectivity. The current dashboard uses realistic simulated calibration data, and the specifications below describe the verified prototype sensor design.
+                <strong className="block text-[#1E2A28]">Current Implementation Boundary:</strong>
+                Sensor wiring and basic pulse/echo readings have been verified locally in the Arduino Serial Monitor. ESP32 Wi-Fi transmission to the backend has not yet been uploaded or verified. The dashboard and backend are fully prepared to consume measured packets once live transmission is initiated.
               </div>
             </div>
 
@@ -92,34 +92,43 @@ export const HardwareModal: React.FC<HardwareModalProps> = ({
                 <span className="text-[10px] font-bold uppercase text-[#1F5A48] block">Microcontroller Core</span>
                 <span className="font-bold text-sm block mt-0.5">{spec.controller}</span>
                 <p className="text-[11px] text-[#1E2A28]/70 mt-1">
-                  Handles GPIO pulse interrupts for flow turbines and ultrasonic trigger/echo timing. Built-in 2.4 GHz Wi-Fi sends JSON packets over HTTPS.
+                  Handles GPIO pulse interrupts for flow turbines and ultrasonic trigger/echo timing. Built-in 2.4 GHz Wi-Fi sends authenticated JSON telemetry to the local backend over the LAN.
                 </p>
               </div>
 
               <div className="p-3 rounded-lg bg-[#EAE5DB] border border-[#D8D2C4]">
-                <span className="text-[10px] font-bold uppercase text-[#3B7C8A] block">Water Level (Depth) Sensor</span>
+                <span className="text-[10px] font-bold uppercase text-[#3B7C8A] block">Tabletop Tank Level Sensor</span>
                 <span className="font-bold text-sm block mt-0.5">{spec.waterLevelSensor}</span>
                 <p className="text-[11px] text-[#1E2A28]/70 mt-1">
-                  Mounted atop the piezometer well casing. Calculates depth = (Speed of sound × Time) / 2 to determine water level fluctuations below ground surface.
+                  Mounted above a small tank. It measures distance to the water surface and reports tank fill percentage; it does not measure groundwater depth.
                 </p>
               </div>
 
               <div className="p-3 rounded-lg bg-[#EAE5DB] border border-[#D8D2C4]">
-                <span className="text-[10px] font-bold uppercase text-[#C56B4C] block">Dual Water Flow Sensors</span>
+                <span className="text-[10px] font-bold uppercase text-[#C56B4C] block">Two-Node Flow Instrumentation</span>
                 <span className="font-bold text-sm block mt-0.5">{spec.flowSensors}</span>
                 <p className="text-[11px] text-[#1E2A28]/70 mt-1">
-                  <strong>Sensor 1 (Inflow):</strong> Fitted to the recharge pit intake pipe.<br />
-                  <strong>Sensor 2 (Outflow):</strong> Fitted to the tubewell distribution discharge pipe.
+                  <strong>Node 1 (Recharge Line):</strong> YF-S201 Hall turbine on the tabletop recharge loop inlet hose.<br />
+                  <strong>Node 2 (Extraction Line):</strong> YF-S201 Hall turbine on the tabletop pump extraction hose.
                 </p>
               </div>
 
               <div className="p-3 rounded-lg bg-[#EAE5DB] border border-[#D8D2C4]">
-                <span className="text-[10px] font-bold uppercase text-[#1E2A28] block">Actuator & Protection</span>
-                <span className="font-bold text-sm block mt-0.5">{spec.actuator}</span>
+                <span className="text-[10px] font-bold uppercase text-[#1E2A28] block">Manual Pump Circuit & Electrical Safety</span>
+                <span className="font-bold text-sm block mt-0.5">Manual low-voltage pump (no relay automation)</span>
                 <p className="text-[11px] text-[#1E2A28]/70 mt-1">
-                  Enables automated shut-off if continuous night draw exceeds baseline or if water table enters critical threshold.
+                  The pump is operated manually for demonstration. No automated pump relay control or claim that the ESP32 measures pump state. Never power a pump from an ESP32 GPIO or 3.3V rail.
                 </p>
               </div>
+            </div>
+            <div className="p-3.5 rounded-lg bg-[#EAE5DB] border border-[#D8D2C4] text-[11px] text-[#1E2A28] space-y-1.5 mt-3">
+              <strong className="block text-[#1F5A48] text-xs">Node Telemetry Counter Behavior & Independence:</strong>
+              <ul className="list-disc pl-4 space-y-1 text-[#1E2A28]/80">
+                <li><strong>flow.pulses:</strong> The count for a 5-second sampling window, not a lifetime total.</li>
+                <li><strong>flow.flowLpm:</strong> The recent instantaneous rate; reads 0.00 L/min when no water is moving.</li>
+                <li><strong>flow.totalLiters:</strong> The ESP32 node&apos;s volatile session counter; resets to 0 whenever that board reboots or loses power.</li>
+                <li><strong>Independent Sessions:</strong> Node 1 and Node 2 counters accumulate independently. The system never subtracts raw cumulative session totals to claim a net balance.</li>
+              </ul>
             </div>
           </div>
         )}
@@ -133,11 +142,11 @@ export const HardwareModal: React.FC<HardwareModalProps> = ({
 
             <div className="space-y-2">
               {[
-                { step: '1', title: 'ESP32 Sensors', desc: 'HC-SR04 depth + 2× YF-S201 Hall turbines compute pulses per second', icon: Cpu, color: 'text-[#1F5A48]' },
-                { step: '2', title: 'Wi-Fi / Cellular Gateway', desc: 'ESP32 packages telemetry JSON and connects to local Gram Panchayat Wi-Fi', icon: Wifi, color: 'text-[#3B7C8A]' },
-                { step: '3', title: 'Node.js / Express API', desc: 'Express handles POST /api/telemetry with API key validation & sanity checking', icon: Server, color: 'text-[#C56B4C]' },
-                { step: '4', title: 'Database & Rules Layer', desc: 'Stores readings into Firestore / PostgreSQL and evaluates rule-based alert triggers', icon: Database, color: 'text-[#1F5A48]' },
-                { step: '5', title: 'React Dashboard (BhujalSetu)', desc: 'Hydrological dial, balance ledger, trends, and action recommendations render in real time', icon: Code2, color: 'text-[#3B7C8A]' },
+                { step: '1', title: 'ESP32 Nodes', desc: 'Node 1 (recharge flow + HC-SR04 tank level) and Node 2 (extraction flow)', icon: Cpu, color: 'text-[#1F5A48]' },
+                { step: '2', title: 'Local Wi-Fi', desc: 'ESP32 nodes send authenticated JSON packets over the local 2.4 GHz LAN', icon: Wifi, color: 'text-[#3B7C8A]' },
+                { step: '3', title: 'Node.js / Express API', desc: 'Express validates POST /api/v1/telemetry with per-node schema and API keys', icon: Server, color: 'text-[#C56B4C]' },
+                { step: '4', title: 'Database & Rules Layer', desc: 'Stores verified node packets in prototype_node_telemetry in PostgreSQL', icon: Database, color: 'text-[#1F5A48]' },
+                { step: '5', title: 'React Dashboard (BhujalSetu)', desc: 'Dashboard displays authenticated node readings, status, and history charts; community models remain separate baselines', icon: Code2, color: 'text-[#3B7C8A]' },
               ].map((item, idx) => {
                 const Icon = item.icon;
                 return (
@@ -157,33 +166,20 @@ export const HardwareModal: React.FC<HardwareModalProps> = ({
           </div>
         )}
 
-        {/* Tab 3: Node.js Backend Code Blueprint */}
+        {/* Tab 3: Backend Integration */}
         {activeTab === 'backend' && (
           <div className="mt-5 space-y-3">
             <p className="text-xs text-[#1E2A28]/80 leading-relaxed">
-              When ready to deploy a live Node.js / Express server, point <code className="bg-[#EAE5DB] px-1 py-0.5 rounded font-mono text-xs">src/services/api.ts</code> to the following endpoints:
+              The prototype integration is active in this repository. Run the backend with <code className="bg-[#EAE5DB] px-1 py-0.5 rounded font-mono text-xs">npm run server:dev</code> and the dashboard with <code className="bg-[#EAE5DB] px-1 py-0.5 rounded font-mono text-xs">npm run dev</code>. Configure <code className="bg-[#EAE5DB] px-1 py-0.5 rounded font-mono text-xs">DEVICE_API_KEY</code>, <code className="bg-[#EAE5DB] px-1 py-0.5 rounded font-mono text-xs">NODE_1_DEVICE_API_KEY</code>, and <code className="bg-[#EAE5DB] px-1 py-0.5 rounded font-mono text-xs">NODE_2_DEVICE_API_KEY</code> in local <code className="bg-[#EAE5DB] px-1 py-0.5 rounded font-mono text-xs">.env.local</code>.
             </p>
-
-            <div className="p-3.5 rounded-lg bg-[#1E2A28] text-[#F5F1E8] text-[11px] font-mono overflow-x-auto space-y-1">
-              <span className="text-[#A7D7D7]">// server.ts - Express IoT Gateway</span><br />
-              <span className="text-[#D9C6A4]">app.post('/api/telemetry', async (req, res) =&gt; &#123;</span><br />
-              &nbsp;&nbsp;const &#123; wellId, depthMeters, inflowLiters, extractionLiters &#125; = req.body;<br />
-              &nbsp;&nbsp;await db.collection('telemetry').add(&#123; ...req.body, timestamp: new Date() &#125;);<br />
-              &nbsp;&nbsp;res.json(&#123; status: 'ok', received: true &#125;);<br />
-              <span className="text-[#D9C6A4]">&#125;);</span><br /><br />
-              <span className="text-[#A7D7D7]">// Dashboard Endpoints</span><br />
-              app.get('/api/groundwater', getLatestGroundwaterLevel);<br />
-              app.get('/api/water-balance', computeWaterBalance);<br />
-              app.get('/api/trends', getTrendSeries);<br />
-              app.get('/api/alerts', evaluateRuleAlerts);<br />
-              app.get('/api/actions', getActionRecommendations);
+            <div className="p-3.5 rounded-lg bg-[#1E2A28] text-[#F5F1E8] text-xs space-y-2">
+              <div><code className="text-[#A7D7D7]">POST /api/v1/telemetry</code> validates node-specific schema (node-1 vs node-2).</div>
+              <div><code className="text-[#A7D7D7]">GET /api/v1/telemetry?villageId=...</code> returns authorized community telemetry history.</div>
+              <div>Prototype records use the <code className="text-[#D9C6A4]">prototype_node_telemetry</code> PostgreSQL table. They do not populate groundwater depth or community water balance.</div>
+              <div>Use <code className="text-[#A7D7D7]">npm run test:backend</code> for hardware-free in-memory API checks.</div>
             </div>
-
-            <div className="p-3 rounded-lg bg-[#1F5A48]/10 border border-[#1F5A48]/30 text-xs text-[#1E2A28]/80 flex items-center space-x-2">
-              <CheckCircle2 className="w-4 h-4 text-[#1F5A48] flex-shrink-0" />
-              <span>
-                All TypeScript interfaces in <code className="font-semibold text-[#1F5A48]">src/types/groundwater.ts</code> are 100% compatible with Express request and response contracts.
-              </span>
+            <div className="p-3 rounded-lg bg-[#C56B4C]/10 border border-[#C56B4C]/30 text-xs text-[#1E2A28]/80">
+              ESP32 GPIO operates at 3.3V logic. Always use a voltage divider on the 5V HC-SR04 ECHO pin, and verify flow sensor pulse logic level. Never power the pump from ESP32 pins.
             </div>
           </div>
         )}
